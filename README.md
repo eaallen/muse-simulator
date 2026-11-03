@@ -60,7 +60,7 @@ Views that are empty in a setup show an "Intentionally blank" message explaining
 
 ## Reference
 
-The build spec lives in [`spec/SPEC.md`](spec/SPEC.md): the concept, design principles, the screen by screen walkthrough, the feature support matrix, the lesson setup catalog, and the build approach. The screenshots the replica was built against are indexed in [`spec/screenshots/README.md`](spec/screenshots/README.md), including two captures from a real phone (the main chat and the sidebar, both in dark mode) alongside the official Google Play listing screenshots.
+The build spec lives in [`spec/SPEC.md`](spec/SPEC.md): the concept, design principles, the screen by screen walkthrough, the feature support matrix, the lesson setup catalog, and the build approach.
 
 ## Design notes
 
