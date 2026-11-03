@@ -1,5 +1,4 @@
 > Markdown rendering of "Muse Simulator: Build Spec" (the .docx of the same name), generated for easy reading on GitHub.
-> Screenshots referenced by this spec are indexed in `spec/screenshots/README.md`. The replica is drawn UI, built against those references.
 
 # Muse Simulator: Build Spec
 
