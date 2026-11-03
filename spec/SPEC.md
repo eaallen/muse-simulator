@@ -164,6 +164,7 @@ Support levels: Full means the student can really do it in the replica. Scripted
 
 Each setup belongs to a lesson or topic cluster in the book and demonstrates that lesson's topics. Chapter 1 setups come first in the build order, because every later setup assumes the student knows the map of the app.
 
+- Setup 0, Your First Run (Chapter 1): a replay of Muse's real initial onboarding: the greeting, the "how I work" message, the name picker (the chosen name renames the agent across the whole replica, header and sidebar included), the starter menu, and connecting the first app. Demonstrates that a first run is a hello, a name, and one connection, not a questionnaire. The follow on daily tips series is intentionally out of scope.
 - Setup 1, First Five Minutes (Chapter 1): send a first message, name the agent, and visit each tab. Demonstrates chat, the tab bar, and Identity.
 
 - Setup 2, Set Your Goal (Chapter 1): create the course goal in the Goals tab and watch tracking items appear. Demonstrates Goals, tracking, and progress.
