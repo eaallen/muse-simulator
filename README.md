@@ -28,29 +28,30 @@ Open `index.html` for a self contained demo and test page with a setup picker, t
 - `muse-simulator-complete`: fired when a student finishes a setup. Detail: `{ setup, title, chapter, checks, total }`.
 - `muse-simulator-step`: fired whenever the guide state changes. Detail: `{ setup, title, chapter, step, instruction, checks: [{ label, done }], done }`.
 
-## The ten lesson setups
+## The eleven lesson setups
 
 Chapter 1, Getting Started with Muse:
 
-1. `ch1-first-five-minutes` — First Five Minutes
-2. `ch1-set-your-goal` — Set Your Goal
-3. `ch1-ideas-and-feed` — Ideas and the Feed
+1. `ch1-first-run` — Your First Run (the onboarding replay: greeting, name picker, first connection)
+2. `ch1-first-five-minutes` — First Five Minutes
+3. `ch1-set-your-goal` — Set Your Goal
+4. `ch1-ideas-and-feed` — Ideas and the Feed
 
 Chapter 2, Automate the Boring Stuff:
 
-4. `ch2-daily-watch` — Connect Email and Set the Daily Watch
-5. `ch2-draft-approve-send` — Draft, Approve, Send
-6. `ch2-shopping-approval` — Shopping with Approval
-7. `ch2-website-job` — A Job on a Website
+5. `ch2-daily-watch` — Connect Email and Set the Daily Watch
+6. `ch2-draft-approve-send` — Draft, Approve, Send
+7. `ch2-shopping-approval` — Shopping with Approval
+8. `ch2-website-job` — A Job on a Website
 
 Chapter 3, Build and Ship Your App:
 
-8. `ch3-scope-build` — Scope It and Build It
-9. `ch3-share-ship` — Share It and Ship Again
+9. `ch3-scope-build` — Scope It and Build It
+10. `ch3-share-ship` — Share It and Ship Again
 
 Chapter 4, Run Your Small Business with Muse:
 
-10. `ch4-business-day` — Run the Business Day
+11. `ch4-business-day` — Run the Business Day
 
 ## Free Explore
 
