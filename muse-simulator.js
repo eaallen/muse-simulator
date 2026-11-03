@@ -1,0 +1,1824 @@
+/* =====================================================================
+   muse-simulator.js
+   A custom web component that simulates the Muse phone app for teaching.
+   One element:  <muse-simulator setup="ch1-first-five-minutes"></muse-simulator>
+   Attributes:   setup  (scenario id), mode ("setup" | "explore"),
+                 theme  ("light" | "dark" | "auto", default "auto")
+   Events:       muse-simulator-complete  { detail: { setup, title, checks } }
+   No dependencies. Renders in shadow DOM. Mobile width by design.
+   ===================================================================== */
+
+const MUSE_SIM_SETUPS = {
+
+  "ch2-website-job": {
+    title: "A Job on a Website",
+    chapter: "Chapter 2: Automate the Boring Stuff",
+    tagline: "Send Muse onto a website to book theater seats, and approve before anything is final.",
+    checklist: [
+      "Ask Muse to run the website job",
+      "Pick your seats on the site",
+      "Approve the booking",
+      "See the confirmation in Activity"
+    ],
+    world: { feed: [], ideas: [], goals: [], library: [], connectors: [] },
+    intro: [
+      { from: "agent", text: "Plenty of real work lives on websites: booking, ordering, comparing, renewing. I can work on a site in my own browser while you watch and steer." },
+      { from: "agent", text: "Your job for me: two seats for Friday's community theater show. I will find them, show you, and stop before paying. Booking only happens on your approval." }
+    ],
+    steps: [
+      {
+        chips: [{ label: "Book 2 seats for Friday's show", value: "book-seats" }],
+        expect: { kind: "chip", value: "book-seats" },
+        userText: "Book 2 seats for Friday's show",
+        check: 0,
+        log: "Website job started: theater tickets, Friday 7 PM",
+        say: [
+          { from: "agent", text: "On it. Opening the theater's site in my browser now. The card below is a live view of what I see on the page." },
+          { from: "agent", card: { type: "browser", id: "browser1", title: "Community Theater: Book Tickets", url: "tickets.communitytheater.example", body: "Friday, 7:00 PM, Almost, Maine. Pick your seats:", seats: [
+            { label: "A1", taken: true }, { label: "A2", taken: true }, { label: "B3" }, { label: "B4" }, { label: "C5", taken: true }, { label: "C6", taken: true }
+          ] } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "seat-pick" }, target: "card-browser1", check: 1,
+        say: [
+          { from: "agent", text: "B row, right in the middle, two seats together at $18 each. Nothing is booked yet: picking seats is free. Paying is the part that needs you." },
+          { from: "agent", card: { type: "approval", id: "booking", title: "Book these seats?", rows: [
+            { k: "Show", v: "Almost, Maine" },
+            { k: "When", v: "Friday, 7:00 PM" },
+            { k: "Seats", v: "B3 and B4" },
+            { k: "Total", v: "$36.00" }
+          ], note: "The agent fills the cart. Only your Allow pays." } }
+        ]
+      },
+      {
+        expect: { kind: "decision", card: "booking", want: "allow" }, check: 2,
+        log: "Booked 2 seats (B3, B4), confirmation THT-2481",
+        apply: { addLibrary: { icon: "🎟️", title: "Theater receipt, Friday 7 PM", meta: "2 seats, B3 and B4 · $36 · THT-2481" } },
+        onWrong: [
+          { from: "agent", text: "Smart pause. Denying costs nothing and the seats go back. For this lesson, tap Allow so you can see the full loop: booking, receipt, and log." }
+        ],
+        say: [
+          { from: "agent", text: "Booked. Confirmation THT-2481. The receipt is in your Library, and the whole job is written up in Activity, so you can audit what I did on that site later." },
+          { from: "agent", card: { type: "sent", title: "Seats booked", body: "Friday 7 PM · Seats B3 and B4 · Confirmation THT-2481", label: "Ticket" } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "open-activity" }, target: "avatar", check: 3,
+        say: [
+          { from: "agent", text: "That log is the point of website jobs: I can act out there, but every step is written down where you can check it. Chapter 2 is complete." }
+        ]
+      }
+    ]
+  },
+
+  "ch3-scope-build": {
+    title: "Scope It and Build It",
+    chapter: "Chapter 3: Build and Ship Your App",
+    tagline: "Pitch an app, answer three scoping questions, approve the plan, and open what Muse built.",
+    checklist: [
+      "Pitch your app idea",
+      "Answer the scoping questions",
+      "Approve the build plan",
+      "Open the finished app"
+    ],
+    world: { feed: [], ideas: [], goals: [], library: [], connectors: [] },
+    intro: [
+      { from: "agent", text: "Time to build something real. Apps do not start with code. They start with a scope small enough to finish." },
+      { from: "agent", text: "You will pitch me an idea, answer three questions, and approve a plan. Pick the smallest answer that still works each time. Big scope is how first apps die." }
+    ],
+    steps: [
+      {
+        chips: [{ label: "Build Pantry Planner", value: "pitch-app" }],
+        expect: { kind: "chip", value: "pitch-app" },
+        userText: "Build Pantry Planner, an app that turns what is in my pantry into dinner ideas",
+        check: 0,
+        say: [
+          { from: "agent", text: "Pantry Planner. Good bones: one clear job. Question one of three: who is it for?" }
+        ]
+      },
+      {
+        chips: [
+          { label: "My family", value: "scope-family" },
+          { label: "Anyone who cooks", value: "scope-anyone" },
+          { label: "Every home chef in the country", value: "scope-everyone" }
+        ],
+        expect: { kind: "chip", value: "scope-family" },
+        userText: "My family",
+        check: 1,
+        nudge: "Vague audiences make vague apps. Pick a specific one: My family.",
+        say: [
+          { from: "agent", text: "One household, known tastes, no accounts or sign ups to build. Question two: what is the one thing it must do really well?" }
+        ]
+      },
+      {
+        chips: [
+          { label: "Suggest dinners from my pantry", value: "scope-dinners" },
+          { label: "Dinners, expiry tracking, and shopping lists", value: "scope-everything" }
+        ],
+        expect: { kind: "chip", value: "scope-dinners" },
+        userText: "Suggest dinners from what is in my pantry",
+        check: 1,
+        nudge: "One job, done well. The everything version is three apps in a trench coat.",
+        say: [
+          { from: "agent", text: "One job: dinner ideas from a pantry list. Question three: how do people open it?" }
+        ]
+      },
+      {
+        chips: [
+          { label: "A link I can share", value: "scope-link" },
+          { label: "An app store release", value: "scope-store" }
+        ],
+        expect: { kind: "chip", value: "scope-link" },
+        userText: "A link I can share",
+        check: 1,
+        nudge: "A link ships today. App stores ship eventually.",
+        say: [
+          { from: "agent", text: "Scope locked: Pantry Planner, for your family, suggests dinners from pantry items, opened by a shareable link. Here is the whole plan. It fits on one card, which is exactly the point." },
+          { from: "agent", card: { type: "action", id: "plan", title: "Build plan: Pantry Planner", body: "1) One screen: pantry list in, dinner ideas out. 2) Five starter recipes your family actually eats. 3) The share link, ready when the build is.", button: "Approve the plan" } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "plan" }, target: "btn-plan", check: 2,
+        log: "Build approved: Pantry Planner v1",
+        say: [
+          { from: "agent", text: "Building now. A real build takes me a few minutes of work. In the simulator, a few seconds." },
+          { from: "agent", text: "Done. Version 1 is ready to open." },
+          { from: "agent", card: { type: "action", id: "open-app", title: "Pantry Planner", body: "Your app, built to the scope you approved. One screen, five recipes, link ready.", button: "Open Pantry Planner" } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "open-app" }, target: "btn-open-app", check: 3,
+        log: "Opened Pantry Planner v1",
+        say: [
+          { from: "agent", text: "That is the whole loop: pitch, scope, plan, approve, build, open. It looks simple because the scope was small. Next setup, you share it and ship a version 2." },
+          { from: "agent", card: { type: "sent", title: "App built", body: "Pantry Planner v1 · scope locked · plan approved · opened", label: "Chapter 3" } }
+        ]
+      }
+    ]
+  },
+
+  "ch3-share-ship": {
+    title: "Share It and Ship Again",
+    chapter: "Chapter 3: Build and Ship Your App",
+    tagline: "Share your app by link, hear real feedback, and ship version 2 to the same address.",
+    checklist: [
+      "Get the share link",
+      "Share it with a real person",
+      "Pick the change from real feedback",
+      "Ship version 2"
+    ],
+    world: { feed: [], ideas: [], goals: [], connectors: [],
+      library: [{ icon: "📱", title: "Pantry Planner", meta: "Version 1 · built in the last setup" }] },
+    intro: [
+      { from: "agent", text: "Pantry Planner v1 exists, which puts it ahead of most app ideas. But an app nobody can open is a diary. Today: share it, hear back, ship again." },
+      { from: "agent", card: { type: "action", id: "get-link", title: "Pantry Planner", body: "Version 1 is built and ready to share.", button: "Get the share link" } }
+    ],
+    steps: [
+      {
+        expect: { kind: "button", id: "get-link" }, target: "btn-get-link", check: 0,
+        say: [
+          { from: "agent", text: "Your link: availabooks.com/apps/pantry-planner (a demo link). Anyone who opens it gets the app in their browser. No install, no account, no app store." },
+          { from: "agent", card: { type: "sent", title: "Share link created", body: "availabooks.com/apps/pantry-planner", label: "Share link" } }
+        ]
+      },
+      {
+        chips: [{ label: "Text it to my sister", value: "share-sister" }],
+        expect: { kind: "chip", value: "share-sister" },
+        userText: "Texting the link to my sister",
+        check: 1,
+        log: "Shared the Pantry Planner link with a real user",
+        say: [
+          { from: "agent", text: "Sent. She cooked from it last night, and her reply just came in:" },
+          { from: "agent", text: "“Love it. Wish it made the shopping list for me, so I am not standing in the store guessing.”" },
+          { from: "agent", text: "That sentence is the most valuable thing in software: a real user, asking for the next thing by name." }
+        ]
+      },
+      {
+        chips: [
+          { label: "Add the shopping list", value: "ship-v2" },
+          { label: "Rebuild the whole app", value: "ship-rebuild" }
+        ],
+        expect: { kind: "chip", value: "ship-v2" },
+        userText: "Add the shopping list button she asked for",
+        check: 2,
+        log: "Shipped Pantry Planner v2 (shopping list button)",
+        nudge: "A small change, shipped fast, beats a big rebuild nobody asked for.",
+        say: [
+          { from: "agent", text: "Building v2: a Make my list button under every recipe, which turns the ingredients you do not have into a shopping list." },
+          { from: "agent", text: "Shipped. Version 2 is live at the same link. Your sister already has it, because when the link never changes, every improvement just arrives." },
+          { from: "agent", card: { type: "sent", title: "Version 2 shipped", body: "New: Make my list button · Same share link", label: "v2" } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "open-activity" }, target: "avatar", check: 3,
+        say: [
+          { from: "agent", text: "Pitch, scope, build, share, listen, ship again. That loop is the whole chapter, and it never really ends. It just gets faster." }
+        ]
+      }
+    ]
+  },
+
+  "ch4-business-day": {
+    title: "Run the Business Day",
+    chapter: "Chapter 4: Run Your Small Business with Muse",
+    tagline: "Run one full day of a small bakery with Muse: morning briefing, approvals, numbers, and one improvement.",
+    checklist: [
+      "Review the morning follow up",
+      "Approve and send it",
+      "Check yesterday's numbers",
+      "Accept one growth idea"
+    ],
+    world: { feed: [], goals: [], library: [], connectors: [],
+      ideas: [{ id: "idea-muffins", icon: "🧁", title: "Muffin happy hour", body: "Muffins are your top waste item. Idea: a 4 PM happy hour, half price muffin boxes, with a post I draft for your Feed. Expected save: about $60 a week." }],
+      goals: [{ title: "Run the bakery with Muse", sub: "Chapter 4: one full business day", done: false }] },
+    intro: [
+      { from: "agent", text: "Welcome to your bakery. Overnight I checked the inbox and the register. Three customer emails, one wholesale order due Friday, and yesterday's sales of $486. Most of it I handled or filed." },
+      { from: "agent", text: "One thing needs your eyes: a follow up to your wholesale customer. In your business, I draft and label everything, and nothing goes out without your approval." },
+      { from: "agent", card: { type: "email", id: "draft1", to: "City Grocer (wholesale)", subject: "Your Friday order", body: "Hi Ana,\n\nConfirming Friday's wholesale order: 40 sourdough loaves, delivered by 7 AM. Same price as last week. If you need the count changed, reply by Thursday noon and we will adjust.\n\nThanks for keeping us on your shelves.", bodyShort: "Hi Ana, confirming Friday: 40 sourdough loaves by 7 AM, same price. Need a different count? Reply by Thursday noon.", signoff: "Sam's Agent", button: "review-draft", buttonLabel: "Review the draft" } }
+    ],
+    steps: [
+      {
+        expect: { kind: "button", id: "review-draft" }, target: "btn-review-draft", check: 0,
+        say: []
+      },
+      {
+        expect: { kind: "button", id: "approve-send" }, check: 1,
+        log: "Sent follow up to City Grocer (labeled SamsAgent)",
+        say: [
+          { from: "agent", card: { type: "sent", title: "Follow up sent", body: "To City Grocer · Confirming Friday's order of 40 loaves", label: "SamsAgent" } },
+          { from: "agent", text: "Sent and labeled, so Ana can see it came from your agent. Now the numbers from yesterday." },
+          { from: "agent", card: { type: "action", id: "open-numbers", title: "Yesterday at the bakery", body: "Sales, best sellers, and the waste report, on one page.", button: "See the numbers" } }
+        ]
+      },
+      {
+        expect: { kind: "button", id: "open-numbers" }, target: "btn-open-numbers", check: 2,
+        apply: { addLibrary: { icon: "📊", title: "Bakery numbers, yesterday", meta: "Sales $486 · Sourdough sold out by noon" } },
+        goto: "ideas",
+        say: [
+          { from: "agent", text: "The full page is in your Library. The short version: $486 in sales, sourdough sold out by noon (bake more), and muffins are quietly eating your profit in the waste bin." },
+          { from: "agent", text: "Which is why there is one idea waiting for you on the Ideas tab." }
+        ]
+      },
+      {
+        expect: { kind: "idea", id: "idea-muffins", want: "accept" }, check: 3,
+        say: [
+          { from: "agent", text: "Done. I will draft the happy hour post for tomorrow's Feed, and you will approve it before it goes anywhere. That is a business day with an agent: briefed in the morning, approvals in minutes, numbers you actually read, and one improvement queued before lunch." }
+        ]
+      }
+    ]
+  },
+
+/* ---------------- Chapter 1 ---------------- */
+
+"ch1-first-five-minutes": {
+  title: "First Five Minutes",
+  chapter: "Chapter 1: Getting Started with Muse",
+  tagline: "Send your first message and learn the map of the app.",
+  checklist: [
+    "Send your first message",
+    "Visit the Feed",
+    "Visit Ideas",
+    "Visit Goals",
+    "Visit the Library",
+    "Return to Chat"
+  ],
+  world: {
+    feed: [
+      { kicker: "Getting started", title: "Welcome to your Feed", body: "This is where your agent posts short updates it writes for you: briefings, reminders, and things it noticed while working in the background." },
+      { kicker: "Getting started", title: "You are in control here", body: "Your agent asks before it sends, spends, or shares. Anything it does shows up in your Activity, and you can revoke any connection at any time." }
+    ],
+    ideas: [
+      { id: "i1", icon: "✉️", title: "I can draft your Friday update email", body: "You send one most Fridays. I can draft it from your calendar and notes, ready for your approval." },
+      { id: "i2", icon: "🎁", title: "I can plan your sister's birthday", body: "Her birthday is in three weeks. I can find a gift inside your budget and draft the card." }
+    ],
+    goals: [],
+    library: []
+  },
+  intro: [
+    { from: "agent", text: "Hi, I am Muse, your personal agent. This is the main chat, where you will spend most of your time. Everything starts with a message, just like texting a friend." },
+    { from: "agent", text: "Tap the chip below to say hello." }
+  ],
+  steps: [
+    {
+      chips: [{ label: "👋 Say hello", value: "hello" }],
+      expect: { kind: "chip", value: "hello" },
+      userText: "Hello!",
+      check: 0,
+      say: [
+        { from: "agent", text: "Hello, Sam. When you talk to me here, I can just answer, or I can go do real work: read your email, check your calendar, shop, build things, and report back." },
+        { from: "agent", text: "Before we do any of that, learn the map. There are five tabs at the bottom. Tap Feed next." }
+      ]
+    },
+    {
+      expect: { kind: "tab", id: "feed" }, target: "tab-feed", check: 1,
+      guide: { screen: "feed", text: "This is the Feed: short posts your agent writes for you on a schedule. Now tap the Ideas tab." },
+      say: [{ from: "agent", text: "That is the Feed. Next, tap Ideas." }]
+    },
+    {
+      expect: { kind: "tab", id: "ideas" }, target: "tab-ideas", check: 2,
+      guide: { screen: "ideas", text: "Ideas are things your agent offers to take on for you. You will work these cards in a later setup. Now tap the Goals tab." },
+      say: [{ from: "agent", text: "Ideas live there. Next, tap Goals." }]
+    },
+    {
+      expect: { kind: "tab", id: "goals" }, target: "tab-goals", check: 3,
+      guide: { screen: "goals", text: "Goals are what you are working toward. Your agent tracks them and makes progress between chats. Now tap the Library tab." },
+      say: [{ from: "agent", text: "Goals are next door to your work. Now tap Library." }]
+    },
+    {
+      expect: { kind: "tab", id: "library" }, target: "tab-library", check: 4,
+      guide: { screen: "library", text: "The Library collects everything your agent makes for you: documents, pages, and files. It is empty now. It will not stay that way. Head back to Chat to finish." },
+      say: [{ from: "agent", text: "Last stop on the tour: tap Chat to come back here." }]
+    },
+    {
+      expect: { kind: "tab", id: "chat" }, target: "tab-chat", check: 5,
+      say: []
+    }
+  ],
+  outro: [
+    { from: "agent", text: "That is the whole map: Chat to talk and work, Feed for your agent's posts, Ideas for offers, Goals for what you are working toward, and the Library for everything made." },
+    { from: "agent", text: "In the real app this is exactly where things live. Next setup: set the goal you will use for this whole course." }
+  ]
+},
+
+"ch1-set-your-goal": {
+  title: "Set Your Goal",
+  chapter: "Chapter 1: Getting Started with Muse",
+  tagline: "Create the course goal and watch your agent start tracking it.",
+  checklist: [
+    "Open the Goals tab",
+    "Tap Create a goal",
+    "Choose your course goal",
+    "See your goal being tracked"
+  ],
+  world: {
+    feed: [],
+    ideas: [],
+    goals: [
+      { title: "Dinner reservations", sub: "Tracking: Sushi restaurants downtown", done: false }
+    ],
+    library: []
+  },
+  intro: [
+    { from: "agent", text: "Goals turn a vague intention into something I can track and work on between our chats. In this course you will run one real goal from start to finish." },
+    { from: "agent", text: "Tap the Goals tab at the bottom." }
+  ],
+  steps: [
+    {
+      expect: { kind: "tab", id: "goals" }, target: "tab-goals", check: 0,
+      guide: { screen: "goals", text: "This list holds what you are working toward. Tap Create a goal." },
+      say: []
+    },
+    {
+      expect: { kind: "button", id: "create-goal" }, target: "create-goal", check: 1,
+      goto: "chat",
+      say: [{ from: "agent", text: "What is the goal? For this course, pick the course goal below so your progress lines up with the lessons." }]
+    },
+    {
+      chips: [
+        { label: "Finish the Build With Muse course", value: "goal-course" },
+        { label: "Save for a trip", value: "goal-trip" },
+        { label: "Train for a 5K", value: "goal-5k" }
+      ],
+      expect: { kind: "chip", value: "goal-course" },
+      userText: "Finish the Build With Muse course",
+      check: 2,
+      nudge: "For this lesson, choose the course goal so the tracking matches the class.",
+      apply: { addGoal: { title: "Finish the Build With Muse course", sub: "Tracking: Chapter 1 of 4 done when this setup is complete", done: false } },
+      say: [
+        { from: "agent", text: "Done. Your goal is created, and I am tracking it: four chapters, three live lessons, one shipped app. I will keep the progress current as you finish each piece." },
+        { from: "agent", text: "Tap the Goals tab to see it in the list." }
+      ]
+    },
+    {
+      expect: { kind: "tab", id: "goals" }, target: "tab-goals", check: 3,
+      guide: { screen: "goals", text: "There it is, with its tracking line under it. In the real app, this list is where you check progress and where your agent reports what it did." },
+      say: []
+    }
+  ],
+  outro: [
+    { from: "agent", text: "Your course goal exists and is being tracked. Every later chapter adds to it." },
+    { from: "agent", text: "Notice what just happened: you stated an outcome once, and now it persists between chats. That is the difference between an agent and a search box." }
+  ]
+},
+
+"ch1-ideas-and-feed": {
+  title: "Ideas and the Feed",
+  chapter: "Chapter 1: Getting Started with Muse",
+  tagline: "Accept an idea, dismiss one, and see where the work lands.",
+  checklist: [
+    "Open the Ideas tab",
+    "Accept the email idea",
+    "Dismiss the birthday idea",
+    "Check the Feed",
+    "Find the result in the Library"
+  ],
+  world: {
+    feed: [
+      { kicker: "Your morning post", title: "One thing needs you today", body: "A form in your email is due this afternoon. In the real app, posts like this are written from what your agent is actually tracking for you." }
+    ],
+    ideas: [
+      { id: "i1", icon: "✉️", title: "I can draft your Friday update email", body: "You send one most Fridays. I can draft it from your calendar and notes, ready for your approval." },
+      { id: "i2", icon: "🎁", title: "I can plan your sister's birthday", body: "Her birthday is in three weeks. I can find a gift inside your budget and draft the card." }
+    ],
+    goals: [],
+    library: []
+  },
+  intro: [
+    { from: "agent", text: "Ideas are offers: things I noticed that I could take off your plate. Accepting one starts real work. Dismissing one costs nothing and teaches me what you do not want." },
+    { from: "agent", text: "Tap the Ideas tab." }
+  ],
+  steps: [
+    {
+      expect: { kind: "tab", id: "ideas" }, target: "tab-ideas", check: 0,
+      guide: { screen: "ideas", text: "Two offers are waiting. Accept the Friday email idea using its Accept button." },
+      say: []
+    },
+    {
+      expect: { kind: "idea", id: "i1", want: "accept" }, target: "idea-i1-accept", check: 1,
+      apply: { addLibrary: { icon: "📄", title: "Friday update email (draft)", meta: "Document, from the accepted idea" } },
+      say: [{ from: "agent", text: "Accepted. I drafted the Friday update from your calendar and notes. Nothing was sent: drafts wait for your approval, always. The draft is in your Library whenever you want it." }],
+      guide: { screen: "ideas", text: "One accepted. Now dismiss the birthday idea. It is fine to say no." }
+    },
+    {
+      expect: { kind: "idea", id: "i2", want: "dismiss" }, target: "idea-i2-dismiss", check: 2,
+      say: [{ from: "agent", text: "Dismissed, and noted. I will not keep offering that one." }],
+      guide: { screen: "ideas", text: "Both cards handled. Now tap the Feed tab." }
+    },
+    {
+      expect: { kind: "tab", id: "feed" }, target: "tab-feed", check: 3,
+      guide: { screen: "feed", text: "Your Feed carries posts like this every day, written from your goals and what your agent is tracking. Now tap Library to find the draft you just created." },
+      say: [{ from: "agent", text: "After the Feed, tap Library." }]
+    },
+    {
+      expect: { kind: "tab", id: "library" }, target: "tab-library", check: 4,
+      guide: { screen: "library", text: "There is the draft, saved as a document. Everything your agent makes lands here: documents, pages, plans, and files." },
+      say: []
+    }
+  ],
+  outro: [
+    { from: "agent", text: "You just ran the full loop: an offer appeared, you accepted it, real work happened, and the result is saved in your Library. No sending happened without you." },
+    { from: "agent", text: "That loop, offer, approve, work, deliverable, is the heartbeat of working with an agent." }
+  ]
+},
+
+
+/* ---------------- Chapter 2 ---------------- */
+
+"ch2-daily-watch": {
+  title: "Connect Email and Set the Daily Watch",
+  chapter: "Chapter 2: Automate the Boring Stuff",
+  tagline: "Connect Gmail, set one narrow daily watch, and read its first report.",
+  checklist: [
+    "Open Connectors",
+    "Start the Gmail connection",
+    "Approve the permissions",
+    "Set the daily watch",
+    "Review the morning result"
+  ],
+  world: {
+    feed: [], ideas: [], goals: [], library: [],
+    connectors: [
+      { id: "gmail", icon: "✉️", name: "Gmail", state: "available" },
+      { id: "gcal", icon: "📅", name: "Google Calendar", state: "available" },
+      { id: "gdrive", icon: "📁", name: "Google Drive", state: "available" }
+    ]
+  },
+  intro: [
+    { from: "agent", text: "Automation starts with access, and access starts with a connector. A connector is a service you link on purpose, with permissions you can see and revoke." },
+    { from: "agent", card: { type: "action", id: "open-connectors", title: "Connect your apps", body: "Link email, calendar, and more. You decide what Muse can access.", button: "Open Connectors" } }
+  ],
+  steps: [
+    {
+      expect: { kind: "button", id: "open-connectors" }, target: "btn-open-connectors", check: 0,
+      guide: { screen: "connectors", text: "These are the services you can link. Nothing is connected yet. Tap Connect on Gmail." },
+      say: []
+    },
+    {
+      expect: { kind: "button", id: "connect-gmail" }, target: "connect-gmail", check: 1,
+      goto: "chat",
+      say: [
+        { from: "agent", text: "Before anything connects, you see exactly what it allows. Read this card the way you would read a contract: what can be read, what can be done, and how you undo it." },
+        { from: "agent", card: { type: "approval", id: "gmail-perms", title: "Connect Gmail?", rows: [
+          { k: "Can read", v: "Your email messages" },
+          { k: "Can send", v: "Only with your approval, each time" },
+          { k: "Undo", v: "Revoke anytime in Settings, Connectors" }
+        ], note: "Approving connects the account. It does not send anything." } }
+      ]
+    },
+    {
+      expect: { kind: "decision", card: "gmail-perms", want: "allow" }, check: 2,
+      apply: { connect: "gmail" },
+      say: [
+        { from: "agent", text: "Gmail is connected. Now the useful part: give me one narrow thing to watch for every day. Narrow is what keeps a watch worth reading." },
+        { from: "agent", text: "What should I watch for each morning?" }
+      ]
+    },
+    {
+      chips: [
+        { label: "Replies from my team", value: "watch-team" },
+        { label: "Invoices and receipts", value: "watch-invoices" },
+        { label: "Anything with a deadline", value: "watch-deadlines" }
+      ],
+      expect: { kind: "chip", value: "watch-team" },
+      userText: "Watch for replies from my team",
+      check: 3,
+      nudge: "For this lesson, pick the team replies watch so the morning result lines up.",
+      say: [
+        { from: "agent", text: "Set. Every morning I will check for replies from your team and report only when something real shows up. Quiet days stay quiet." },
+        { from: "agent", card: { type: "upcoming", title: "Scheduled: Daily email watch", body: "Runs every morning. Watches for replies from your team. Listed under Upcoming, where you can pause or remove it anytime." } },
+        { from: "agent", text: "In the real app, you would now wait for tomorrow. Here, tap Next morning to see the first report." }
+      ]
+    },
+    {
+      chips: [{ label: "⏭ Next morning", value: "next-morning" }],
+      expect: { kind: "chip", value: "next-morning" }, check: 4,
+      say: [
+        { from: "agent", card: { type: "watchresult", title: "Daily watch: 1 reply needs you", body: "Dana from your team replied at 8:12 AM: the signed form is attached and she is waiting on your go-ahead to file it." } },
+        { from: "agent", text: "One item, worth your attention, nothing else. That is a watch doing its job." }
+      ]
+    }
+  ],
+  outro: [
+    { from: "agent", text: "You connected a service on purpose, approved exactly what it allows, and set a narrow daily watch that reports only when it matters." },
+    { from: "agent", text: "In your real Muse, this same setup is how you stop carrying your inbox in your head." }
+  ]
+},
+
+"ch2-draft-approve-send": {
+  title: "Draft, Approve, Send",
+  chapter: "Chapter 2: Automate the Boring Stuff",
+  tagline: "Review and revise an agent draft before it goes out under your agent sign off.",
+  checklist: [
+    "Open the draft",
+    "Revise the draft",
+    "Approve the send",
+    "Check the Activity log"
+  ],
+  world: { feed: [], ideas: [], goals: [], library: [] },
+  intro: [
+    { from: "agent", text: "A customer, Mrs. Lopez, emailed asking when her order will be ready. I drafted a reply. It does not go anywhere until you read it, change it if you want, and approve it." },
+    { from: "agent", card: { type: "email", id: "draft1",
+      to: "Mrs. Lopez", subject: "Your order is ready Thursday",
+      body: "Hello Mrs. Lopez, thank you so much for your patience. I wanted to let you know that your order will be ready for pickup this Thursday afternoon at our Price location, and we will hold it for you until Saturday if Thursday does not work. Thank you for shopping with us.",
+      bodyShort: "Hello Mrs. Lopez, your order will be ready for pickup this Thursday afternoon at our Price location. We can hold it until Saturday if that helps. Thank you for shopping with us.",
+      signoff: "Sam's Agent", button: "review-draft", buttonLabel: "Review draft" } }
+  ],
+  steps: [
+    {
+      expect: { kind: "button", id: "review-draft" }, target: "btn-review-draft", check: 0,
+      say: [{ from: "agent", text: "The draft is open above. Read it like a customer would. Two buttons matter: make it shorter, or approve and send." }]
+    },
+    {
+      expect: { kind: "button", id: "shorten-draft" }, target: "btn-shorten-draft", check: 1,
+      say: [{ from: "agent", text: "Shorter version saved. Same facts, half the words. When a draft is wrong, this loop, read, revise, approve, is the whole skill." }]
+    },
+    {
+      expect: { kind: "button", id: "approve-send" }, target: "btn-approve-send", check: 2,
+      log: "Sent email to Mrs. Lopez (labeled SamsAgent)",
+      say: [
+        { from: "agent", card: { type: "sent", title: "Sent to Mrs. Lopez", label: "SamsAgent", body: "Signed: Sam's Agent. Filed under your SamsAgent label, so every agent send is in one place to audit." } },
+        { from: "agent", text: "Sent, signed as your agent, and labeled. Last step: tap the avatar at the top to open Activity and see the send in the log." }
+      ]
+    },
+    {
+      expect: { kind: "button", id: "open-activity" }, target: "avatar", check: 3,
+      say: []
+    }
+  ],
+  outro: [
+    { from: "agent", text: "The Activity log is your audit trail: everything your agent did, in order, including this send." },
+    { from: "agent", text: "Draft, review, revise, approve, audit. Run every agent send through that loop and trust stops being a leap of faith." }
+  ]
+},
+
+"ch2-shopping-approval": {
+  title: "Shopping with Approval",
+  chapter: "Chapter 2: Automate the Boring Stuff",
+  tagline: "Allow the checkout that matches, and catch the one that does not.",
+  checklist: [
+    "Read and allow the good card",
+    "Catch the wrong card",
+    "Tell Muse to keep looking"
+  ],
+  world: { feed: [], ideas: [], goals: [], library: [] },
+  intro: [
+    { from: "agent", text: "You asked me to find an everyday backpack: navy, medium, under $60. I found one that matches. Before I buy anything, you get a card. Your job is to actually read it: item, options, price, and the card being charged." },
+    { from: "agent", card: { type: "approval", id: "buy-a", title: "Checkout: Muse wants to place an order", rows: [
+      { k: "Item", v: "Everyday Backpack, Navy, Medium" },
+      { k: "Price", v: "$48.00" },
+      { k: "Paying with", v: "Visa •••• 1234" }
+    ], note: "You asked for: Navy, Medium, under $60. This matches." } }
+  ],
+  steps: [
+    {
+      expect: { kind: "decision", card: "buy-a", want: "allow" }, check: 0,
+      log: "Placed order: Everyday Backpack, $48.00",
+      say: [
+        { from: "agent", text: "Ordered. It arrives Thursday, and the receipt is in your Library." },
+        { from: "agent", text: "Now a second one showed up from another store. Read this card just as carefully." },
+        { from: "agent", card: { type: "approval", id: "buy-b", title: "Checkout: Muse wants to place an order", rows: [
+          { k: "Item", v: "Everyday Backpack, Navy, Large" },
+          { k: "Price", v: "$89.00" },
+          { k: "Paying with", v: "Visa •••• 1234" }
+        ], note: "You asked for: Navy, Medium, under $60." } }
+      ]
+    },
+    {
+      expect: { kind: "decision", card: "buy-b", want: "deny" }, check: 1,
+      onWrong: [
+        { from: "agent", text: "Look again before that goes through: the size is Large, not the Medium you asked for, and $89.00 is over your $60 limit. Deny this one and I will keep looking." }
+      ],
+      say: [
+        { from: "agent", text: "Denied, and nothing was charged. Two details were wrong: Large instead of Medium, and $89 against your $60 limit. The price alone was not the tell; the note under the card restated what you asked for, and the rows disagreed with it." },
+        { from: "agent", text: "Tap the chip to have me keep looking for a second one at the right size and price." }
+      ]
+    },
+    {
+      chips: [{ label: "Keep looking", value: "keep-looking" }],
+      expect: { kind: "chip", value: "keep-looking" },
+      userText: "Keep looking for the right one",
+      check: 2,
+      say: [{ from: "agent", text: "On it. I will bring you a card only when the size and the price both match what you asked for." }]
+    }
+  ],
+  outro: [
+    { from: "agent", text: "That is the approval skill: read the item, the options, the price, and the payment method against what you actually asked for, every time, even when the last card was fine." },
+    { from: "agent", text: "Approving is not a formality. It is the job." }
+  ]
+}
+
+};
+
+/* Full catalog for pickers and menus. ready:false setups are planned, not built. */
+const MUSE_SIM_INDEX = [
+  { id: "ch1-first-five-minutes", ready: true },
+  { id: "ch1-set-your-goal", ready: true },
+  { id: "ch1-ideas-and-feed", ready: true },
+  { id: "ch2-daily-watch", ready: true },
+  { id: "ch2-draft-approve-send", ready: true },
+  { id: "ch2-shopping-approval", ready: true },
+  { id: "ch2-website-job", title: "A Job on a Website", chapter: "Chapter 2: Automate the Boring Stuff", ready: true },
+  { id: "ch3-scope-build", title: "Scope It and Build It", chapter: "Chapter 3: Build and Ship Your App", ready: true },
+  { id: "ch3-share-ship", title: "Share It and Ship Again", chapter: "Chapter 3: Build and Ship Your App", ready: true },
+  { id: "ch4-business-day", title: "Run the Business Day", chapter: "Chapter 4: Run Your Small Business with Muse", ready: true }
+];
+if (typeof window !== "undefined") {
+  window.MUSE_SIMULATOR_SETUPS = MUSE_SIM_INDEX.map(e => {
+    const s = MUSE_SIM_SETUPS[e.id];
+    return { id: e.id, ready: e.ready, title: s ? s.title : e.title, chapter: s ? s.chapter : e.chapter, tagline: s ? s.tagline : "" };
+  });
+}
+
+
+/* ---------------- Styles ---------------- */
+
+const MUSE_SIM_CSS = `
+:host { display: block; max-width: 430px; margin: 0 auto; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.sim {
+  --bg: #f4f4f2; --surface: #ffffff; --surface2: #ececea; --ink: #1b1b1e; --muted: #6d6d73;
+  --line: #dededa; --user: #2f6fed; --userink: #ffffff; --accent: #2f6fed;
+  --allow: #173a7a; --deny: #ffffff; --good: #177245; --warn: #b45309;
+  --shadow: 0 10px 34px rgba(20,20,30,.16);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+}
+.sim.dark {
+  --bg: #0f0f13; --surface: #1d1d24; --surface2: #26262f; --ink: #f2f2f5; --muted: #a3a3ad;
+  --line: #30303a; --user: #3b78f0; --accent: #7aa5ff; --allow: #7aa5ff; --deny: #26262f;
+  --good: #4cc38a; --warn: #f5b26b; --shadow: 0 10px 34px rgba(0,0,0,.5);
+}
+.setupbar { display: flex; align-items: center; gap: 8px; padding: 8px 4px; font-size: 13px; color: var(--muted); }
+.setupbar .st { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setupbar .sp { margin-left: auto; white-space: nowrap; }
+.setupbar button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; min-height: 32px; }
+.phone { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; box-shadow: var(--shadow); height: min(800px, calc(100dvh - 130px)); min-height: 520px; display: flex; flex-direction: column; }
+@media (max-width: 480px) { .phone { border-radius: 18px; } }
+header.app { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; }
+header.app .burger { font-size: 19px; color: var(--muted); padding: 4px; }
+header.app .who { margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; cursor: pointer; color: var(--ink); padding: 2px 8px; border-radius: 14px; }
+header.app .avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(145deg, #f3d9a4, #dfae62); display: flex; align-items: center; justify-content: center; font-size: 19px; border: 2px solid var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+header.app .aname { font-size: 12.5px; font-weight: 600; }
+header.app .dots { font-size: 19px; color: var(--muted); padding: 4px; }
+.checkbar { display: flex; gap: 6px; padding: 4px 12px 9px; overflow-x: auto; scrollbar-width: none; }
+.checkbar::-webkit-scrollbar { display: none; }
+.check { flex: 0 0 auto; font-size: 11.5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.check.done { color: var(--good); border-color: var(--good); font-weight: 600; }
+.check.now { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+main.screen { flex: 1; overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 9px; }
+.guide { background: #fff7dd; color: #5c4a12; border: 1px solid #ecd27c; border-radius: 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; }
+.sim.dark .guide { background: #33300f; color: #f0df9a; border-color: #6b5f1e; }
+.msg { max-width: 86%; padding: 9px 12px; border-radius: 18px; font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.agent { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+.sim.dark .msg.agent { background: transparent; border: none; border-radius: 0; padding: 2px 2px; max-width: 96%; font-size: 15px; }
+.sim.dark .typing { background: var(--surface2); border: none; }
+header.app .burgerbtn { width: 38px; height: 38px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 17px; color: var(--ink); flex: 0 0 auto; border: none; cursor: pointer; }
+header.app .invite { background: var(--surface2); color: var(--ink); font-size: 13px; font-weight: 600; border-radius: 999px; padding: 8px 15px; flex: 0 0 auto; }
+header.app .astatus { font-size: 11px; color: var(--muted); background: var(--surface2); border-radius: 999px; padding: 2px 9px; }
+nav.tabbar button svg { width: 24px; height: 24px; }
+nav.tabbar button { opacity: .62; }
+nav.tabbar button.on { opacity: 1; }
+.composer .inputrow { background: var(--surface2); border-radius: 999px; padding: 4px; }
+.composer .inputrow input { background: transparent; border: none; min-height: 40px; }
+.composer .plus { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: var(--ink); font-size: 21px; cursor: pointer; flex: 0 0 auto; }
+.composer .mic { background: transparent; border: none; }
+.composer { background: var(--bg); border-top: none; padding: 6px 10px 8px; }
+.msg.user { align-self: flex-end; background: var(--user); color: var(--userink); border-bottom-right-radius: 6px; }
+.msg.sys { align-self: center; background: none; color: var(--muted); font-size: 12.5px; text-align: center; }
+.typing { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: flex; gap: 5px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: tb 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .18s; } .typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes tb { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
+.card { align-self: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.card h4 { margin: 0; font-size: 14px; }
+.card .sub { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.card .rows { display: flex; flex-direction: column; gap: 5px; }
+.card .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.card .row .k { color: var(--muted); } .card .row .v { font-weight: 600; text-align: right; }
+.card .note { font-size: 12.5px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 8px; line-height: 1.45; }
+.card .btnrow { display: flex; gap: 8px; }
+.btn { flex: 1; min-height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--deny); color: var(--ink); font-size: 14.5px; font-weight: 600; cursor: pointer; padding: 10px; }
+.btn.primary { background: var(--allow); color: #fff; border-color: var(--allow); }
+.sim.dark .btn.primary { color: #0d1526; }
+.btn.small { flex: 0 0 auto; min-height: 40px; padding: 8px 14px; font-size: 13.5px; }
+.btn:active { transform: scale(.98); }
+.resolved { font-size: 13px; font-weight: 700; text-align: center; padding: 6px; }
+.resolved.ok { color: var(--good); } .resolved.no { color: var(--warn); }
+.labelchip { display: inline-block; font-size: 11px; font-weight: 700; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; }
+.emailbody { font-size: 13.5px; line-height: 1.55; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; white-space: pre-wrap; }
+.post { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+.post .kick { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.post h4 { margin: 4px 0 5px; font-size: 15px; }
+.post p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.idea { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 7px; }
+.idea .top { display: flex; gap: 9px; align-items: flex-start; }
+.idea .ic { font-size: 21px; } .idea h4 { margin: 0; font-size: 14.5px; line-height: 1.35; }
+.idea p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.idea .btnrow { display: flex; gap: 8px; }
+.idea.gone { opacity: .55; }
+.goal { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; display: flex; gap: 10px; align-items: flex-start; }
+.goal .box { width: 19px; height: 19px; border-radius: 50%; border: 2px solid var(--muted); flex: 0 0 auto; margin-top: 1px; display: flex; align-items: center; justify-content: center; color: var(--good); font-size: 12px; font-weight: 800; }
+.goal.done .box { border-color: var(--good); }
+.goal h4 { margin: 0; font-size: 14.5px; } .goal p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.bigbtn { width: 100%; min-height: 48px; border-radius: 14px; border: 1.5px dashed var(--accent); background: none; color: var(--accent); font-size: 14.5px; font-weight: 700; cursor: pointer; }
+.lib { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; display: flex; gap: 11px; align-items: center; }
+.lib .ic { font-size: 22px; } .lib h4 { margin: 0; font-size: 14px; } .lib p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+.empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 18px; line-height: 1.55; }
+.conn { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; display: flex; align-items: center; gap: 11px; }
+.conn .ic { font-size: 21px; } .conn h4 { margin: 0; font-size: 14.5px; flex: 1; }
+.conn .state { font-size: 12px; color: var(--good); font-weight: 700; }
+.screenhead { font-size: 17px; font-weight: 700; margin: 4px 2px 0; }
+.composer { border-top: 1px solid var(--line); background: var(--surface); padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.chips { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding-bottom: 1px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; border: 1.5px solid var(--accent); color: var(--accent); background: none; border-radius: 999px; padding: 8px 13px; font-size: 13.5px; font-weight: 600; cursor: pointer; min-height: 40px; }
+.inputrow { display: flex; gap: 8px; align-items: center; }
+.inputrow input { flex: 1; min-height: 44px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 0 15px; font-size: 14.5px; outline: none; min-width: 0; }
+.inputrow .send { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--user); color: #fff; font-size: 17px; cursor: pointer; flex: 0 0 auto; }
+.inputrow .mic { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-size: 16px; cursor: pointer; flex: 0 0 auto; }
+nav.tabbar { display: flex; border-top: 1px solid var(--line); background: var(--surface); padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); }
+nav.tabbar button { flex: 1; background: none; border: none; cursor: pointer; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; font-weight: 600; padding: 5px 0; border-radius: 12px; min-height: 48px; }
+nav.tabbar button .ti { font-size: 19px; }
+nav.tabbar button.on { color: var(--accent); }
+.sheet { position: absolute; inset: 0; background: rgba(10,10,16,.45); display: none; align-items: flex-end; z-index: 5; }
+.sheet.open { display: flex; }
+.sheet .panel { background: var(--surface); width: 100%; max-height: 88%; overflow-y: auto; border-radius: 20px 20px 0 0; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; animation: up .22s ease; }
+@keyframes up { from { transform: translateY(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+.sheet h3 { margin: 0; font-size: 16px; }
+.sheet .meta { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.act { display: flex; gap: 9px; font-size: 13.5px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.act .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.donebox { position: absolute; inset: 0; background: rgba(10,10,16,.5); display: none; align-items: center; justify-content: center; z-index: 6; padding: 18px; }
+.donebox.open { display: flex; }
+.donebox .inner { background: var(--surface); border-radius: 20px; padding: 20px 16px; text-align: center; display: flex; flex-direction: column; gap: 9px; max-width: 330px; }
+.donebox .big { font-size: 34px; } .donebox h3 { margin: 0; font-size: 17px; }
+.donebox p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.pulse { animation: pl 1.15s ease-in-out infinite; border-radius: 12px; }
+@keyframes pl { 0%, 100% { box-shadow: 0 0 0 0 rgba(47,111,237,.0); } 50% { box-shadow: 0 0 0 4px rgba(47,111,237,.45); } }
+.shake { animation: sh .3s ease; }
+@keyframes sh { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.unk { text-align: center; padding: 30px 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.guidepanel { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 16px; padding: 13px 14px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 7px; }
+.gp-kicker { font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+.gp-title { font-size: 16.5px; font-weight: 700; }
+.gp-tag { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.gp-instruct { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-left: 4px solid var(--accent); border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.5; }
+.gp-instruct .gp-do { display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 9px; border-radius: 999px; margin-bottom: 6px; }
+.gp-nudge { font-size: 13px; color: var(--warn); line-height: 1.45; }
+.gp-list { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gp-list li { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+.gp-list li .mk { width: 15px; flex: 0 0 auto; text-align: center; }
+.gp-list li.done { color: var(--good); font-weight: 600; }
+.gp-list li.now { color: var(--ink); font-weight: 700; }
+.gp-foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 9px; font-size: 12.5px; color: var(--muted); }
+.gp-foot button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; min-height: 34px; }
+.gp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gp-head button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; min-height: 30px; flex: 0 0 auto; }
+.gp-goalrow { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: 12px; padding: 8px 11px; }
+.gp-goalrow .gp-goal-label { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+.gp-goalrow .gp-goal-text { font-size: 13.5px; font-weight: 600; flex: 1; line-height: 1.35; }
+.gp-drop { border: none; background: none; color: var(--accent); font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 6px 4px; white-space: nowrap; min-height: 34px; }
+.gp-rest { display: none; }
+.gp-rest.open { display: block; }
+.gp-done { background: #e9f7ee; border: 1px solid #bfe6cc; color: #14532d; border-radius: 12px; padding: 10px 12px; font-size: 13.5px; line-height: 1.5; }
+.sim.dark .gp-done { background: #0f2c1c; border-color: #1e4d31; color: #a7e8bf; }
+
+/* drawer, reactions, stubs, settings */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 50; }
+.drawer { position: absolute; top: 0; bottom: 0; left: 0; width: 86%; max-width: 322px; background: var(--bg); border-right: 1px solid var(--line); border-radius: 0 22px 22px 0; z-index: 51; box-shadow: 18px 0 40px rgba(0,0,0,.25); padding: 20px 16px 14px; overflow-y: auto; display: flex; flex-direction: column; animation: slidein .18s ease; }
+@keyframes slidein { from { transform: translateX(-16px); opacity: .4; } to { transform: none; opacity: 1; } }
+.d-name { font-size: 23px; font-weight: 700; letter-spacing: -.01em; padding: 0 4px 20px; }
+.d-label { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 4px 4px; display: flex; align-items: center; justify-content: space-between; }
+.d-label svg { width: 19px; height: 19px; color: var(--muted); }
+.d-note { font-size: 13.5px; color: var(--muted); margin: 0 4px 10px; }
+.d-row { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; border: none; background: none; color: var(--ink); padding: 11px 10px; border-radius: 12px; cursor: pointer; font-size: 16px; min-height: 48px; }
+.d-row:hover { background: var(--surface2); }
+.d-row.on { background: var(--surface2); font-weight: 600; }
+.d-row svg { width: 23px; height: 23px; flex: 0 0 auto; }
+.d-div { border-top: 1px solid var(--line); margin: 16px 0 14px; }
+.d-chat { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none; color: var(--ink); padding: 10px; border-radius: 10px; cursor: pointer; font-size: 15.5px; min-height: 44px; }
+.d-chat:hover { background: var(--surface2); }
+.d-chat.on { background: var(--surface2); font-weight: 600; }
+.d-chat .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-dot { width: 8px; height: 8px; border-radius: 50%; background: #2f7bff; flex: 0 0 auto; }
+.d-bottom { margin-top: auto; padding-top: 14px; display: flex; align-items: center; gap: 10px; }
+.d-circ { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--surface2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; flex: 0 0 auto; }
+.d-circ svg { width: 20px; height: 20px; }
+.d-searchpill { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--surface2); color: var(--muted); border: none; border-radius: 999px; padding: 11px 15px; font-size: 14.5px; cursor: pointer; text-align: left; min-height: 42px; }
+.d-searchpill svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.msg.user { position: relative; }
+.msg.user.hasreact { margin-bottom: 9px; }
+.react { position: absolute; left: -4px; bottom: -10px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; font-size: 12px; line-height: 1; padding: 3px 6px; box-shadow: var(--shadow); }
+.setrow { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 8px; cursor: pointer; color: var(--ink); font-size: 14.5px; min-height: 48px; }
+.setrow .ic { font-size: 18px; width: 26px; text-align: center; }
+.setrow .chev { margin-left: auto; color: var(--muted); }
+.stubbox { text-align: center; padding: 34px 18px; }
+.stubbox .big { font-size: 40px; margin-bottom: 10px; }
+.stubbox h4 { font-size: 17px; margin-bottom: 8px; }
+.stubbox p { font-size: 14px; color: var(--muted); line-height: 1.55; max-width: 300px; margin: 0 auto 16px; }
+.composer .mic.on { background: #e5484d; color: #fff; }
+
+.emptystate { text-align: center; padding: 36px 22px; }
+.emptystate .es-ic { width: 58px; height: 58px; border-radius: 50%; background: var(--surface2); display: inline-flex; align-items: center; justify-content: center; font-size: 27px; margin-bottom: 12px; }
+.emptystate .es-kick { display: block; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; }
+.emptystate h4 { font-size: 16px; margin-bottom: 7px; }
+.emptystate p { font-size: 13.5px; color: var(--muted); line-height: 1.55; max-width: 300px; margin: 0 auto; }
+
+.urlbar { background: var(--surface2); border-radius: 8px; padding: 5px 9px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.seatgrid { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.seat { min-width: 46px; min-height: 42px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 13.5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
+.seat.taken { opacity: .35; border-style: dashed; cursor: default; }
+`;
+
+
+/* Per-step instructions, shown in the lesson guide panel OUTSIDE the phone. */
+
+const MUSE_SIM_TAB_ICONS = {
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5z"/></svg>',
+  feed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h13v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M17 9h2a1 1 0 0 1 1 1v7a2 2 0 0 1-2 2"/><path d="M7 9h7M7 12.5h7M7 16h4.5"/></svg>',
+  ideas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 1 3.4 10.9c-.6.5-.9 1-.9 2.1h-5c0-1.1-.3-1.6-.9-2.1A6 6 0 0 1 12 3z"/><path d="M9.5 19h5M10.5 21.5h3"/></svg>',
+  goals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M8.5 12.4l2.4 2.4 4.6-5"/></svg>',
+  library: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.6"/><circle cx="16.8" cy="7.3" r="3.8"/><rect x="3.5" y="14.5" width="7.5" height="6" rx="1.6"/><path d="M16.8 13.6l3.4 6.4h-6.8z"/></svg>'
+};
+
+const MUSE_SIM_INSTRUCT = {
+  "ch2-website-job": [
+    "Tap the chip to send Muse onto the theater site.",
+    "Tap one of the open seats, B3 or B4, on the website card.",
+    "Review the booking card, then tap Allow.",
+    "Tap the avatar at the top to open Activity and see the job log."
+  ],
+  "ch3-scope-build": [
+    "Tap the chip to pitch Pantry Planner.",
+    "Pick a specific audience: your family.",
+    "Pick the one job it must do well.",
+    "Pick the fastest way to open it: a link.",
+    "Review the plan card and tap Approve the plan.",
+    "Tap Open Pantry Planner to see your app."
+  ],
+  "ch3-share-ship": [
+    "Tap Get the share link on the app card.",
+    "Tap the chip to text the link to your sister.",
+    "Tap the chip to add the one feature she asked for.",
+    "Tap the avatar to see the whole story in Activity."
+  ],
+  "ch4-business-day": [
+    "Tap Review the draft on the email card.",
+    "Read it in the sheet, then tap Approve and send.",
+    "Tap See the numbers on the card.",
+    "Accept the muffin happy hour idea."
+  ],
+  "ch1-first-five-minutes": [
+    "Say hello: tap the chip in the chat composer.",
+    "Tap the Feed tab at the bottom of the app.",
+    "Now tap the Ideas tab.",
+    "Now tap the Goals tab.",
+    "Now tap the Library tab.",
+    "Tap Chat to return to the conversation."
+  ],
+  "ch1-set-your-goal": [
+    "Tap the Goals tab at the bottom.",
+    "Tap Create a goal.",
+    "Choose the course goal from the chips in the chat.",
+    "Tap the Goals tab to see your goal being tracked."
+  ],
+  "ch1-ideas-and-feed": [
+    "Tap the Ideas tab.",
+    "Accept the Friday email idea.",
+    "Dismiss the birthday idea.",
+    "Tap the Feed tab.",
+    "Tap the Library tab to find the draft."
+  ],
+  "ch2-daily-watch": [
+    "Tap Open Connectors on the card in the chat.",
+    "Tap Connect on Gmail.",
+    "Read the permission card, then Allow the connection.",
+    "Pick what the daily watch should look for.",
+    "Tap Next morning to see the first report."
+  ],
+  "ch2-draft-approve-send": [
+    "Tap Review draft on the email card.",
+    "Tap Make it shorter to revise the draft.",
+    "Tap Approve and send.",
+    "Tap the avatar at the top of the app to open Activity."
+  ],
+  "ch2-shopping-approval": [
+    "Read the checkout card carefully, then decide.",
+    "Read this card just as carefully. Something is off.",
+    "Tap Keep looking."
+  ]
+};
+
+/* ---------------- The component ---------------- */
+
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+
+/* ================= RiveScript brain + loader (Free Explore chat) =================
+   The brain below is real RiveScript. The component loads the official
+   RiveScript library from a CDN and runs it; if the CDN is unreachable it
+   falls back to a small built-in interpreter that understands the subset
+   of RiveScript this brain uses (+ triggers, - replies, * wildcards,
+   <star>, and (a|b) random choices). */
+const MUSE_SIM_BRAIN = `
+! version = 2.0
+
++ hello
+- Hello! Great to see you. Ask me to check email, set a goal, or plan something small and watch how I work.
+- Hey there. I am ready when you are. Ask me for something small, like checking email or setting a goal, and watch how I work.
+
++ hi
+- Hi! What should we take on first?
+
++ hey
+- Hey! Good to see you.
+
++ hello there
+- Hello there. What can I take off your plate today?
+
++ what is your name
+- I am Sam, the demo agent inside this simulator. In the real app I would be your own Muse, set up your way.
+
++ who are you
+- I am Sam, a stand-in agent for this lesson demo. Everything here is practice data.
+
++ what can you do
+- Quite a lot, in the real app: watch your email on a schedule, draft messages for your approval, shop within limits you set, run jobs on websites, and keep your goals moving. In here, I mostly chat.
+- (Try me on everyday things:|Ask me about goals, email, or shopping and I will show you the shape of it.)
+
++ help
+- Just talk to me like a person. Try: set a goal, check my email, or buy more coffee. I will show you how I would handle it, approvals and all.
+
++ how are you
+- Running smoothly and slightly caffeinated on imaginary coffee. How are you?
+
++ my name is *
+- Nice to meet you, <star>. I will remember it for this chat. What should we do first?
+
++ i want to *
+- Love it. If you want to <star>, the way I work is: I make a plan, show it to you, and only act once you approve. Want to try that here?
+
++ * goal *
+- Goals are where I keep the thread between chats. You set the outcome, I track the steps, and I check in from the Goals tab. Try creating one from the tab bar below.
+
++ * email *
+- Email is my favorite chore to take over. Connect Gmail from the Connectors screen, set a daily watch, and I will surface only what needs you, labeled and signed as your agent when I send.
+
++ * inbox *
+- Inbox zero is a team sport. I sort, I draft, you approve. The daily watch in Chapter 2 is exactly that pattern.
+
++ * grocery *
+- Give me the list and the store and I will build the cart. You approve the total before anything is ordered.
+
++ * shop *
+- Shopping runs on rails you set: the item, the size, a price limit. I prepare the cart and stop for your Allow on anything real. Wrong size or over budget, you Deny and I adjust.
+
++ * buy *
+- Same rule as shopping: I can fill a cart, but the money only moves after your approval. That pause is the whole safety system.
+
++ * remind *
+- Reminders are easy wins. Tell me what and when, and I will nudge you right on time. In the real app I can also use your phone alarms.
+
++ * build *
+- Building is Chapter 3 territory: we scope something small, I write it, you try it, we ship it. Small and finished beats big and someday.
+
++ * app *
+- An app is just a goal with buttons. We would scope it, build a first version, and share a link. Chapter 3 walks the whole loop.
+
++ * business *
+- Running a small business with an agent is Chapter 4: inbox in the morning, follow ups drafted, numbers watched, nothing sent without your eyes on it.
+
++ * course *
+- This simulator lives inside the Hire Your First Agent course. Finish Chapter 1 and this free play will start to feel like your own setup.
+
++ * muse *
+- Muse is the app I am pretending to be. Chat is home base, and Feed, Ideas, Goals, and Library are the other rooms. The menu at the top left opens the sidebar.
+
++ thank you
+- Any time. That is literally what I am here for.
+- You are welcome. What is next?
+
++ thanks
+- You got it.
+
++ bye
+- Bye for now. Your goals will be right here when you get back.
+
++ goodbye
+- See you soon. I will keep the watches running.
+
++ yes
+- Perfect. Consider it noted, and in the real app I would already be moving on it.
+
++ no
+- No problem. We adjust and keep going.
+
++ ok
+- Ok. Say the word when you want the next step.
+
++ cool
+- Right? Small automations add up fast.
+
++ * weather *
+- I cannot see real weather from inside a simulator, but in the real app I would check the forecast for your exact spot before answering.
+
++ *
+- I am a demo brain, so that one is beyond my script. In the real app I would reason it through, search if needed, and show my work before acting.
+- Good question. My scripted answers cover goals, email, shopping, and getting started. Try one of those and I will show you the pattern.
+- Noted. If this were your real Muse, I would turn that into a plan and check with you before doing anything irreversible.
+`;
+
+let _rsMode = null, _rsBot = null, _rsQueue = [], _rsRulesCache = null;
+const RS_URLS = [
+  "https://cdn.jsdelivr.net/npm/rivescript@2.2.1/dist/rivescript.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/rivescript/2.2.1/rivescript.min.js"
+];
+function _rsBuiltinParse() {
+  const rules = []; let cur = null;
+  for (const raw of MUSE_SIM_BRAIN.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("+ ")) { cur = { trig: line.slice(2).trim().toLowerCase(), replies: [] }; rules.push(cur); }
+    else if (line.startsWith("- ") && cur) cur.replies.push(line.slice(2).trim());
+  }
+  return rules.map(r => {
+    const pat = r.trig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\*/g, "(.*)");
+    return { re: new RegExp("^" + pat + "$", "i"), replies: r.replies };
+  });
+}
+function _rsRules() { if (!_rsRulesCache) _rsRulesCache = _rsBuiltinParse(); return _rsRulesCache; }
+function _rsBuiltinReply(text) {
+  const norm = String(text).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const r of _rsRules()) {
+    const m = norm.match(r.re);
+    if (m) {
+      let out = r.replies[Math.floor(Math.random() * r.replies.length)];
+      out = out.replace(/<star1?>/g, (m[1] || "").trim());
+      out = out.replace(/\(([^()]*\|[^()]*)\)/g, (_, g) => { const o = g.split("|"); return o[Math.floor(Math.random() * o.length)]; });
+      return out;
+    }
+  }
+  return "I am a demo brain, so that one is beyond my script. Try goals, email, or shopping.";
+}
+function museSimEnsureBot(cb) {
+  if (_rsMode) { cb(); return; }
+  _rsQueue.push(cb);
+  if (_rsQueue.length > 1) return;
+  const finish = mode => { _rsMode = mode; const q = _rsQueue; _rsQueue = []; q.forEach(f => { try { f(); } catch (e) {} }); };
+  const timer = setTimeout(() => finish("builtin"), 6000);
+  const attempt = i => {
+    if (i >= RS_URLS.length) { clearTimeout(timer); finish("builtin"); return; }
+    const el = document.createElement("script");
+    el.src = RS_URLS[i]; el.async = true;
+    el.onload = () => { clearTimeout(timer); try { _rsBot = new window.RiveScript(); _rsBot.stream(MUSE_SIM_BRAIN); _rsBot.sortReplies(); finish("rive"); } catch (e) { finish("builtin"); } };
+    el.onerror = () => attempt(i + 1);
+    document.head.appendChild(el);
+  };
+  attempt(0);
+}
+function museSimBotReply(text, cb) {
+  if (_rsMode === "rive" && _rsBot) {
+    try {
+      const r = _rsBot.reply("simuser", text);
+      if (r && typeof r.then === "function") { r.then(v => cb(String(v))).catch(() => cb(_rsBuiltinReply(text))); return; }
+      cb(String(r)); return;
+    } catch (e) {}
+  }
+  cb(_rsBuiltinReply(text));
+}
+
+const MUSE_SIM_EXPLORE_CHATS = [
+  { id: "main", icon: "\uD83E\uDD89", title: "Muse", sub: "Your main chat" },
+  { id: "lake", icon: "\uD83C\uDFD6\uFE0F", title: "Lake house weekend", sub: "Planning for 6 people" },
+  { id: "groceries", icon: "\uD83D\uDED2", title: "Grocery run", sub: "Walmart list, 12 items" },
+  { id: "inbox", icon: "\uD83D\uDCEC", title: "Inbox watch", sub: "3 need you this morning" }
+];
+const MUSE_SIM_CHAT_SEEDS = {
+  lake: [
+    { from: "user", text: "Plan a lake house weekend for 6 people" },
+    { from: "agent", text: "I found three houses near Bear Lake that sleep 6 and allow dogs. The middle one has the best dock, $412 for two nights. Want the links, or should I narrow by budget first?" }
+  ],
+  groceries: [
+    { from: "user", text: "Add oat milk and eggs to the grocery list" },
+    { from: "agent", text: "Done. Your Walmart list now has 12 items and sits at about $86. I will not check out until you approve the cart." }
+  ],
+  inbox: [
+    { from: "agent", text: "Morning summary: 3 emails need you, 14 filed, 2 drafts waiting for approval. The landlord's lease renewal is the only urgent one." },
+    { from: "user", text: "Draft a reply to the landlord" },
+    { from: "agent", text: "Draft is ready in your approval queue. It accepts the renewal and asks to keep the same rent for 12 months. Nothing sends until you tap Approve." }
+  ]
+};
+
+class MuseSimulator extends HTMLElement {
+  static get observedAttributes() { return ["setup", "theme", "mode"]; }
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._run = 0;
+    this._mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    this._onMq = () => this._applyTheme();
+    if (this._mq && this._mq.addEventListener) this._mq.addEventListener("change", this._onMq);
+    this.shadowRoot.addEventListener("click", e => this._onClick(e));
+    this.shadowRoot.addEventListener("keydown", e => {
+      if (e.key === "Enter" && e.target && e.target.id === "composer-input") this._sendTyped();
+    });
+  }
+
+  connectedCallback() {
+    if (!this._booted) {
+      this._booted = true;
+      this._load(this.getAttribute("setup") || "ch1-first-five-minutes");
+    }
+  }
+
+  attributeChangedCallback(name, oldV, newV) {
+    if (oldV === newV || !this._booted) return;
+    if (name === "setup" && newV) this._load(newV);
+    if (name === "theme") this._applyTheme();
+    if (name === "mode") this._load(this.getAttribute("setup") || "ch1-first-five-minutes");
+  }
+
+  reset() { this._load(this._setupId); }
+
+  /* ---------- state ---------- */
+
+  _load(id) {
+    this._run++;
+    this._botToken = (this._botToken || 0) + 1;
+    this._setupId = id;
+    const sc = MUSE_SIM_SETUPS[id];
+    this._explore = (this.getAttribute("mode") || "setup") === "explore";
+    this._s = {
+      sc, stepIdx: -1, view: "chat", messages: [], checks: new Set(),
+      activity: [], resolved: {}, ideaState: {}, guide: null,
+      sheet: null, shortened: false, typing: false, done: false, busy: false, nudge: null, goalsOpen: false,
+      drawer: false, stubTitle: "", listening: false, exploreChat: "main", chatStore: null,
+      world: sc ? JSON.parse(JSON.stringify(sc.world || {})) : {}
+    };
+    if (!this._s.world.feed) this._s.world.feed = [];
+    if (!this._s.world.ideas) this._s.world.ideas = [];
+    if (!this._s.world.goals) this._s.world.goals = [];
+    if (!this._s.world.library) this._s.world.library = [];
+    if (!this._s.world.connectors) this._s.world.connectors = [];
+    this._applyTheme();
+    this._render();
+    if (sc) this._begin();
+  }
+
+  _applyTheme() {
+    const el = this.shadowRoot.querySelector(".sim");
+    if (!el) return;
+    const t = (this.getAttribute("theme") || "auto").toLowerCase();
+    const dark = t === "dark" || (t === "auto" && this._mq && this._mq.matches);
+    el.classList.toggle("dark", !!dark);
+  }
+
+  async _begin() {
+    const run = this._run, s = this._s;
+    await this._postAll(s.sc.intro, run);
+    if (run !== this._run) return;
+    if (this._explore) {
+      s.chatStore = { main: s.messages,
+        lake: JSON.parse(JSON.stringify(MUSE_SIM_CHAT_SEEDS.lake)),
+        groceries: JSON.parse(JSON.stringify(MUSE_SIM_CHAT_SEEDS.groceries)),
+        inbox: JSON.parse(JSON.stringify(MUSE_SIM_CHAT_SEEDS.inbox)) };
+      s.exploreChat = "main";
+      this._render(); return;
+    }
+    this._startStep(0, run);
+  }
+
+  _cur() {
+    const s = this._s;
+    if (!s.sc || this._explore || s.done) return null;
+    return s.sc.steps[s.stepIdx] || null;
+  }
+
+  async _startStep(i, run) {
+    const s = this._s;
+    s.stepIdx = i;
+    if (i >= s.sc.steps.length) { this._finish(run); return; }
+    const step = s.sc.steps[i];
+    this._render();
+    if (step.prompt && step.prompt.length) await this._postAll(step.prompt, run);
+    if (run !== this._run) return;
+    this._render();
+  }
+
+  async _postAll(list, run) {
+    const s = this._s;
+    for (const m of list || []) {
+      if (run !== this._run) return;
+      if (m.from === "agent") {
+        s.typing = true; this._render();
+        await sleep(430);
+        if (run !== this._run) return;
+        s.typing = false;
+      }
+      s.messages.push(m);
+      this._render();
+      await sleep(150);
+    }
+  }
+
+  async _finish(run) {
+    const s = this._s;
+    s.done = true;
+    await this._postAll(s.sc.outro, run);
+    if (run !== this._run) return;
+    this._render();
+    this.dispatchEvent(new CustomEvent("muse-simulator-complete", {
+      bubbles: true, composed: true,
+      detail: { setup: this._setupId, title: s.sc.title, chapter: s.sc.chapter, checks: [...s.checks].length, total: s.sc.checklist.length }
+    }));
+  }
+
+  /* ---------- step engine ---------- */
+
+  _matches(expect, act) {
+    if (!expect || !act) return false;
+    if (expect.kind !== act.kind) return false;
+    switch (expect.kind) {
+      case "tab": return expect.id === act.id;
+      case "chip": return expect.value === act.value;
+      case "button": return expect.id === act.id;
+      case "decision": return expect.card === act.card && expect.want === act.want;
+      case "idea": return expect.id === act.id && expect.want === act.want;
+    }
+    return false;
+  }
+
+  async _try(act) {
+    const s = this._s;
+    if (this._explore || s.done) return false;
+    const t0 = Date.now();
+    while ((s.busy || !this._cur()) && Date.now() - t0 < 4000) await sleep(120);
+    if (s.busy) return false;
+    const step = this._cur();
+    if (!step) return false;
+    if (this._matches(step.expect, act)) { await this._complete(step, act); return true; }
+    if (step.expect.kind === "decision" && act.kind === "decision" && step.expect.card === act.card && step.onWrong) {
+      s.busy = true;
+      await this._postAll(step.onWrong, this._run);
+      s.busy = false;
+      this._render();
+      return false;
+    }
+    this._nudge(step);
+    return false;
+  }
+
+  async _complete(step, act) {
+    const s = this._s, run = this._run;
+    s.busy = true;
+    if (act.kind === "chip" && step.userText) s.messages.push({ from: "user", text: step.userText });
+    if (act.kind === "decision") s.resolved[act.card] = act.want;
+    if (act.kind === "idea") s.ideaState[act.id] = act.want;
+    if (step.check != null) s.checks.add(step.check);
+    if (step.log) s.activity.unshift({ when: "Just now", text: step.log });
+    if (step.apply) {
+      const a = step.apply;
+      if (a.addGoal) { s.world.goals.push(a.addGoal); s.activity.unshift({ when: "Just now", text: "Created goal: " + a.addGoal.title }); }
+      if (a.addLibrary) s.world.library.push(a.addLibrary);
+      if (a.connect) {
+        const c = s.world.connectors.find(x => x.id === a.connect);
+        if (c) { c.state = "connected"; s.activity.unshift({ when: "Just now", text: "Connected " + c.name }); }
+      }
+    }
+    s.guide = step.guide || null;
+    s.nudge = null;
+    this._render();
+    if (step.say && step.say.length) await this._postAll(step.say, run);
+    if (run !== this._run) { s.busy = false; return; }
+    if (step.goto) { s.view = step.goto; this._render(); }
+    await sleep(200);
+    s.busy = false;
+    if (run !== this._run) return;
+    this._startStep(s.stepIdx + 1, run);
+  }
+
+  _nudge(step) {
+    const s = this._s;
+    const now = Date.now();
+    if (this._lastNudge && now - this._lastNudge < 1600) return;
+    this._lastNudge = now;
+    s.nudge = step.nudge || "Not quite. Follow the pulsing highlight in the app: that is the next move in this setup.";
+    this._render();
+  }
+
+  /* ---------- interactions ---------- */
+
+  _onClick(e) {
+    const t = e.target.closest("[data-action]");
+    if (!t) return;
+    const action = t.getAttribute("data-action");
+    const s = this._s;
+    if (action === "reset") { this.reset(); return; }
+    if (action === "dismiss-done") { s.doneSeen = true; s.view = "chat"; this._render(); return; }
+    if (action === "close-sheet") { s.sheet = null; this._render(); return; }
+    if (action === "toggle-goals") { s.goalsOpen = !s.goalsOpen; this._render(); return; }
+    if (action === "open-drawer") {
+      if (this._explore) { s.drawer = true; this._render(); }
+      else { s.nudge = "The sidebar opens in Free Explore mode. In a lesson setup, everything you need is on this screen."; this._render(); }
+      return;
+    }
+    if (action === "close-drawer") { s.drawer = false; this._render(); return; }
+    if (action === "drawer-main") { if (this._explore) this._switchChat("main"); return; }
+    if (action === "drawer-search") {
+      if (!this._explore) return;
+      s.stubTitle = "Search"; s.view = "stub"; s.drawer = false; this._render(); return;
+    }
+    if (action === "drawer-new") {
+      if (!this._explore) return;
+      const fresh = [{ from: "agent", text: "New chat. What should we take on?" }];
+      if (s.chatStore) s.chatStore.main = fresh;
+      s.messages = fresh; s.exploreChat = "main"; s.view = "chat"; s.drawer = false; s.sheet = null; s.typing = false; this._botToken++;
+      this._render(); return;
+    }
+    if (action === "drawer-chat") { if (this._explore) this._switchChat(t.getAttribute("data-id")); return; }
+    if (action === "drawer-nav") {
+      if (!this._explore) return;
+      s.view = t.getAttribute("data-id"); s.drawer = false; s.sheet = null; this._render(); return;
+    }
+    if (action === "drawer-status") { if (!this._explore) return; s.drawer = false; s.sheet = "activity"; this._render(); return; }
+    if (action === "setrow") {
+      const id = t.getAttribute("data-id");
+      if (id === "connectors") { s.view = "connectors"; this._render(); return; }
+      if (id === "appearance") {
+        const cur = (this.getAttribute("theme") || "auto").toLowerCase();
+        this.setAttribute("theme", cur === "dark" ? "light" : "dark");
+        return;
+      }
+      s.stubTitle = t.getAttribute("data-title") || "This screen"; s.view = "stub"; this._render(); return;
+    }
+    if (action === "stub-back") { s.view = "chat"; this._render(); return; }
+    if (action === "tab") {
+      const id = t.getAttribute("data-id");
+      s.view = id; s.sheet = null;
+      this._render();
+      this._try({ kind: "tab", id });
+      return;
+    }
+    if (action === "chip") {
+      const value = t.getAttribute("data-value"), label = t.getAttribute("data-label");
+      const step = this._cur();
+      if (step && step.expect && step.expect.kind === "chip" && step.expect.value === value) { this._try({ kind: "chip", value }); return; }
+      s.messages.push({ from: "user", text: label });
+      this._render();
+      this._try({ kind: "chip", value });
+      return;
+    }
+    if (action === "decision") {
+      const card = t.getAttribute("data-card"), want = t.getAttribute("data-want");
+      if (this._explore) { s.resolved[card] = want; this._render(); return; }
+      this._try({ kind: "decision", card, want }).then(ok => { if (ok) this._render(); });
+      return;
+    }
+    if (action === "idea") {
+      const id = t.getAttribute("data-id"), want = t.getAttribute("data-want");
+      if (this._explore) { s.ideaState[id] = want; this._render(); return; }
+      this._try({ kind: "idea", id, want });
+      return;
+    }
+    if (action === "button") {
+      const id = t.getAttribute("data-id");
+      if (id === "open-connectors") { s.view = "connectors"; this._render(); this._try({ kind: "button", id }); return; }
+      if (id === "review-draft") { s.sheet = "email"; this._render(); this._try({ kind: "button", id }); return; }
+      if (id === "open-activity") { s.sheet = "activity"; this._render(); this._try({ kind: "button", id }); return; }
+      if (id === "shorten-draft") { s.shortened = true; this._render(); this._try({ kind: "button", id }); return; }
+      if (id === "approve-send") { s.sheet = null; this._render(); this._try({ kind: "button", id }); return; }
+      this._try({ kind: "button", id });
+      return;
+    }
+    if (action === "send") { this._sendTyped(); return; }
+    if (action === "mic") { this._mic(); return; }
+  }
+
+  _sendTyped() {
+    const input = this.shadowRoot.querySelector("#composer-input");
+    if (!input) return;
+    const text = (input.value || "").trim();
+    if (!text) return;
+    input.value = "";
+    const s = this._s;
+    const step = this._cur();
+    if (step && step.expect && step.expect.kind === "chip" && step.chips) {
+      const hit = step.chips.find(c => text.toLowerCase().includes(c.value.split("-")[0]) || c.label.toLowerCase().includes(text.toLowerCase()));
+      if (hit) { this._try({ kind: "chip", value: hit.value }); return; }
+    }
+    if (this._explore) { this._exploreUserSend(text); return; }
+    s.messages.push({ from: "user", text });
+    s.nudge = "In the simulator the agent's replies are scripted. Use the chips in the composer, or tap the pulsing highlight.";
+    this._render();
+  }
+
+  _drawerHtml() {
+    const s = this._s;
+    if (!s.drawer || !this._explore) return "";
+    const tabs = [["chat", "Main chat"], ["feed", "Feed"], ["ideas", "Ideas"], ["goals", "Goals"], ["library", "Library"]];
+    const side = MUSE_SIM_EXPLORE_CHATS.filter(c => c.id !== "main");
+    const archiveSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg>';
+    const searchSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg>';
+    const composeSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+    return `<div class="scrim" data-action="close-drawer"></div>
+    <aside class="drawer">
+      <div class="d-name">Muse</div>
+      <div class="d-label">Tabs</div>
+      <div class="d-note">You can reorder with long press</div>
+      ${tabs.map(tn => {
+        const on = tn[0] === "chat" ? (s.view === "chat" && s.exploreChat === "main") : s.view === tn[0];
+        const act = tn[0] === "chat" ? 'data-action="drawer-main"' : `data-action="drawer-nav" data-id="${tn[0]}"`;
+        return `<button class="d-row ${on ? "on" : ""}" ${act}>${MUSE_SIM_TAB_ICONS[tn[0]]}<span>${tn[1]}</span></button>`;
+      }).join("")}
+      <div class="d-div"></div>
+      <div class="d-label">Side chats ${archiveSvg}</div>
+      ${side.map(c => `<button class="d-chat ${s.exploreChat === c.id && s.view === "chat" ? "on" : ""}" data-action="drawer-chat" data-id="${c.id}"><span class="t">${esc(c.title)}</span>${c.id === "inbox" ? '<span class="d-dot"></span>' : ""}</button>`).join("")}
+      <div class="d-bottom">
+        <button class="d-circ" data-action="drawer-nav" data-id="settings" title="Settings">\u2699\uFE0F</button>
+        <button class="d-searchpill" data-action="drawer-search">${searchSvg}<span>Search</span></button>
+        <button class="d-circ" data-action="drawer-new" title="New chat">${composeSvg}</button>
+      </div>
+    </aside>`;
+  }
+
+  _switchChat(id) {
+    const s = this._s;
+    if (!s.chatStore || !s.chatStore[id]) return;
+    s.messages = s.chatStore[id];
+    s.exploreChat = id; s.view = "chat"; s.drawer = false; s.sheet = null; s.typing = false;
+    this._botToken++;
+    this._render();
+  }
+
+  _exploreUserSend(text) {
+    const s = this._s;
+    s.messages.push({ from: "user", text });
+    s.view = "chat";
+    this._render();
+    this._botChain(text);
+  }
+
+  _botChain(userText) {
+    const s = this._s;
+    const token = ++this._botToken;
+    const chatId = s.exploreChat;
+    const mine = s.messages[s.messages.length - 1];
+    const alive = () => this._s === s && this._botToken === token && s.exploreChat === chatId;
+    const t = String(userText || "").toLowerCase();
+    let emoji = "\uD83D\uDC40";
+    if (/thank|great|awesome|nice|perfect/.test(t)) emoji = "\uD83D\uDE0A";
+    else if (/\?$/.test(t.trim()) || /^(what|how|why|when|can|do|is)\b/.test(t)) emoji = "\uD83E\uDD14";
+    else if (/\b(hello|hi|hey)\b/.test(t)) emoji = "\uD83D\uDC4B";
+    else if (/money|price|cost|buy|shop/.test(t)) emoji = "\uD83E\uDD11";
+    else if (/mail|inbox/.test(t)) emoji = "\uD83D\uDCEC";
+    else if (/goal/.test(t)) emoji = "\uD83C\uDFAF";
+    else if (/grocer|food/.test(t)) emoji = "\uD83D\uDED2";
+    const shorts = ["On it.", "Good call.", "You got it.", "Sure thing.", "Let me take that on."];
+    const short = shorts[Math.floor(Math.random() * shorts.length)];
+    setTimeout(() => { if (!alive()) return; mine.react = emoji; this._render(); }, 650);
+    museSimEnsureBot(() => {
+      setTimeout(() => { if (!alive()) return; s.typing = true; this._render(); }, 1100);
+      setTimeout(() => { if (!alive()) return; s.typing = false; s.messages.push({ from: "agent", text: short }); this._render(); }, 1850);
+      museSimBotReply(userText, long => {
+        setTimeout(() => { if (!alive()) return; s.typing = true; this._render(); }, 2600);
+        setTimeout(() => { if (!alive()) return; s.typing = false; s.messages.push({ from: "agent", text: long }); this._render(); }, 3800);
+      });
+    });
+  }
+
+  _mic() {
+    const s = this._s;
+    if (!this._explore) {
+      s.nudge = "Voice is not live in a lesson setup. In the real app, the mic is where you dictate or record a voice note. Try it for real in Free Explore, where the mic uses your browser's speech to text.";
+      this._render();
+      return;
+    }
+    if (s.listening) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { this._exploreUserSend("Remind me to water the plants on Friday"); return; }
+    try {
+      const rec = new SR();
+      rec.lang = "en-US"; rec.interimResults = false; rec.maxAlternatives = 1;
+      s.listening = true; this._render();
+      rec.onresult = ev => { s.listening = false; this._exploreUserSend(ev.results[0][0].transcript); };
+      rec.onerror = () => { if (s.listening) { s.listening = false; this._render(); } };
+      rec.onend = () => { if (s.listening) { s.listening = false; this._render(); } };
+      rec.start();
+    } catch (err) {
+      s.listening = false;
+      this._exploreUserSend("Remind me to water the plants on Friday");
+    }
+  }
+
+  /* ---------- rendering ---------- */
+
+  _instruction(step) {
+    const s = this._s;
+    if (s.done || this._explore) return null;
+    if (!step) return "Watch the chat. Your first move comes up in a moment.";
+    const list = MUSE_SIM_INSTRUCT[this._setupId] || [];
+    return list[s.stepIdx] || step.nudge || "Follow the pulsing highlight in the app.";
+  }
+
+  _guidePanelHtml(step) {
+    const s = this._s;
+    const mode = (this.getAttribute("guide") || "panel").toLowerCase();
+    if (mode === "external" || mode === "none") return "";
+    const total = s.sc.checklist.length;
+    const curIdx = s.done ? total : (step && step.check != null ? step.check : (s.sc.checklist.findIndex((_, i) => !s.checks.has(i)) >= 0 ? s.sc.checklist.findIndex((_, i) => !s.checks.has(i)) : 0));
+    const curLabel = s.done ? "All goals complete" : (s.sc.checklist[curIdx] || "");
+    const list = `<div class="gp-rest ${s.goalsOpen ? "open" : ""}"><ul class="gp-list">${s.sc.checklist.map((c, i) =>
+      `<li class="${s.checks.has(i) ? "done" : (step && step.check === i ? "now" : "")}"><span class="mk">${s.checks.has(i) ? "\u2713" : (step && step.check === i ? "\u25B8" : "\u25CB")}</span><span>${esc(c)}</span></li>`).join("")}</ul></div>`;
+    return `<div class="guidepanel">
+      <div class="gp-head"><span class="gp-kicker">${esc(s.sc.chapter)}</span><button data-action="reset">Restart</button></div>
+      <div class="gp-title">${esc(s.sc.title)}</div>
+      ${this._explore
+        ? `<div class="gp-instruct"><span class="gp-do">Free explore</span>Tap anything in the app. Nothing here is graded, and nothing is real.</div>`
+        : `<div class="gp-goalrow"><span class="gp-goal-label">${s.done ? "Done" : "Goal " + (curIdx + 1) + " of " + total}</span><span class="gp-goal-text">${esc(curLabel)}</span><button class="gp-drop" data-action="toggle-goals">${s.goalsOpen ? "\u25B4 Hide" : "\u25BE All goals"}</button></div>
+      ${list}
+      ${s.done ? `<div class="gp-done">\uD83C\uDFC6 <b>Setup complete.</b> ${total} of ${total} goals done. The completion event has been sent to this page.</div>`
+        : `<div class="gp-instruct"><span class="gp-do">Instructions</span>${esc(this._instruction(step) || "")}</div>`}
+      ${s.nudge && !s.done ? `<div class="gp-nudge">Hint: ${esc(s.nudge)}</div>` : ""}`}
+    </div>`;
+  }
+
+  _render() {
+    const s = this._s, root = this.shadowRoot;
+    if (!s.sc) {
+      root.innerHTML = `<style>${MUSE_SIM_CSS}</style><div class="sim"><div class="unk">This setup is planned but not built yet.<br>Available setups load from the setup attribute, for example setup="ch1-first-five-minutes".</div></div>`;
+      this._applyTheme();
+      return;
+    }
+    const step = this._cur();
+    const total = s.sc.checklist.length, doneCount = s.checks.size;
+    root.innerHTML = `<style>${MUSE_SIM_CSS}</style>
+    <div class="sim">
+      ${this._guidePanelHtml(step)}
+      <div class="phone">
+        <header class="app">
+          <button class="burgerbtn" data-action="open-drawer" title="Menu">\u2630</button>
+          <button class="who" data-action="button" data-id="open-activity" data-target="avatar" title="Activity, Approvals, Upcoming">
+            <span class="avatar">\uD83E\uDD89</span><span class="aname">Muse</span>
+            ${(s.typing || s.busy) ? '<span class="astatus">is working</span>' : ''}
+          </button>
+          <span class="invite">Invite</span>
+        </header>
+        <main class="screen">${this._screenHtml(step)}</main>
+        ${s.view === "chat" ? this._composerHtml(step) : ""}
+        <nav class="tabbar">${["chat", "feed", "ideas", "goals", "library"].map(tab =>
+          `<button data-action="tab" data-id="${tab}" data-target="tab-${tab}" class="${s.view === tab ? "on" : ""}" title="${tab[0].toUpperCase() + tab.slice(1)}">${MUSE_SIM_TAB_ICONS[tab]}</button>`).join("")}
+        </nav>
+        ${this._sheetHtml()}
+        ${this._drawerHtml()}
+      </div>
+    </div>`;
+    this._applyTheme();
+    const main = root.querySelector("main.screen");
+    if (main) main.scrollTop = main.scrollHeight;
+    if (step && !s.done) {
+      let sel = step.target ? `[data-target="${step.target}"]` : null;
+      if (!sel && step.expect) {
+        if (step.expect.kind === "decision") sel = `[data-target="card-${step.expect.card}"]`;
+        else if (step.expect.kind === "chip") sel = ".chip";
+        else if (step.expect.kind === "idea") sel = `[data-target="idea-${step.expect.id}-${step.expect.want}"]`;
+      }
+      if (sel) { const el = root.querySelector(sel); if (el) el.classList.add("pulse"); }
+    }
+    const sig = [this._setupId, s.stepIdx, [...s.checks].join(","), s.done, this._explore].join("|");
+    if (sig !== this._lastSig) {
+      this._lastSig = sig;
+      this.dispatchEvent(new CustomEvent("muse-simulator-step", {
+        bubbles: true, composed: true,
+        detail: {
+          setup: this._setupId, title: s.sc.title, chapter: s.sc.chapter, step: s.stepIdx,
+          instruction: this._instruction(step),
+          checks: s.sc.checklist.map((label, i) => ({ label, done: s.checks.has(i) })),
+          done: s.done
+        }
+      }));
+    }
+  }
+
+  _emptyHtml(icon, title, body) {
+    return `<div class="emptystate"><span class="es-ic">${icon}</span><span class="es-kick">Intentionally blank</span><h4>${esc(title)}</h4><p>${esc(body)}</p></div>`;
+  }
+
+  _screenHtml(step) {
+    const s = this._s, v = s.view;
+    if (v === "chat") {
+      if (!s.messages.length && !s.typing) return this._emptyHtml("\uD83E\uDD89", "This chat is empty", "Nothing has happened in this chat yet, on purpose. When a conversation starts, the messages appear right here.");
+      return s.messages.map(m => this._msgHtml(m)).join("") +
+        (s.typing ? `<div class="typing"><i></i><i></i><i></i></div>` : "");
+    }
+    if (v === "feed") {
+      return `<div class="screenhead">Feed</div>` +
+        (s.world.feed.length ? s.world.feed.map(p =>
+          `<div class="post"><div class="kick">${esc(p.kicker)}</div><h4>${esc(p.title)}</h4><p>${esc(p.body)}</p></div>`).join("")
+          : this._emptyHtml("\uD83D\uDCF0", "Nothing on your Feed yet", "This tab starts blank in the simulator. In the real app, short posts your agent writes for you, like morning briefings and finished work, land here."));
+    }
+    if (v === "ideas") {
+      return `<div class="screenhead">Ideas</div>` +
+        (s.world.ideas.length ? s.world.ideas.map(it => {
+          const st = s.ideaState[it.id];
+          return `<div class="idea ${st ? "gone" : ""}"><div class="top"><span class="ic">${esc(it.icon)}</span><h4>${esc(it.title)}</h4></div><p>${esc(it.body)}</p>
+          ${st ? `<div class="resolved ${st === "accept" ? "ok" : "no"}">${st === "accept" ? "✓ Accepted" : "Dismissed"}</div>`
+               : `<div class="btnrow"><button class="btn small" data-action="idea" data-id="${it.id}" data-want="dismiss">Dismiss</button><button class="btn small primary" data-action="idea" data-id="${it.id}" data-want="accept" data-target="idea-${it.id}-accept">Accept</button></div>`}
+          </div>`;
+        }).join("") : this._emptyHtml("\uD83D\uDCA1", "No ideas right now", "This tab starts blank in the simulator. In the real app, your agent adds offers here when it spots something it can take on for you."));
+    }
+    if (v === "goals") {
+      return `<div class="screenhead">Goals</div>` +
+        (s.world.goals.length ? s.world.goals.map(g =>
+          `<div class="goal ${g.done ? "done" : ""}"><span class="box">${g.done ? "✓" : ""}</span><div><h4>${esc(g.title)}</h4><p>${esc(g.sub || "")}</p></div></div>`).join("")
+          : this._emptyHtml("\uD83C\uDFAF", "No goals yet", "This screen starts blank in the simulator, the way a brand new account does. Create your first goal below.")) +
+        `<button class="bigbtn" data-action="button" data-id="create-goal" data-target="create-goal">+ Create a goal</button>`;
+    }
+    if (v === "library") {
+      return `<div class="screenhead">Library</div>` +
+        (s.world.library.length ? s.world.library.map(li =>
+          `<div class="lib"><span class="ic">${esc(li.icon)}</span><div><h4>${esc(li.title)}</h4><p>${esc(li.meta || "")}</p></div></div>`).join("")
+          : this._emptyHtml("\uD83D\uDCDA", "Your Library is empty", "This tab starts blank in the simulator. In the real app, documents, pages, and files your agent makes collect here."));
+    }
+    if (v === "settings") {
+      const rows = [
+        ["connectors", "\uD83D\uDD0C", "Connectors", ""],
+        ["wallet", "\uD83D\uDCB3", "Wallet", "Wallet"],
+        ["credentials", "\uD83D\uDD10", "Secure credentials", "Secure credentials"],
+        ["permissions", "\u2705", "Permissions", "Permissions"],
+        ["channels", "\uD83D\uDCAC", "Messaging channels", "Messaging channels"],
+        ["devices", "\uD83D\uDCF1", "Devices", "Devices"],
+        ["notifications", "\uD83D\uDD14", "Notifications", "Notifications"],
+        ["appearance", "\uD83C\uDF17", "Appearance", ""],
+        ["applock", "\uD83D\uDD12", "App lock", "App lock"],
+        ["data", "\uD83D\uDCC2", "Data controls", "Data controls"]
+      ];
+      return `<div class="screenhead">Settings</div>` + rows.map(r =>
+        `<button class="setrow" data-action="setrow" data-id="${r[0]}" data-title="${esc(r[3])}"><span class="ic">${r[1]}</span>${esc(r[2])}<span class="chev">\u203A</span></button>`).join("");
+    }
+    if (v === "stub") {
+      return `<div class="screenhead">${esc(s.stubTitle || "Screen")}</div><div class="stubbox">
+        <div class="big">\uD83E\uDDE9</div><h4>${esc(s.stubTitle || "This screen")}</h4>
+        <p>This screen is a placeholder in the simulator. In the real app it is fully built. Everything the lessons need lives on Chat, Feed, Ideas, Goals, Library, Connectors, and Activity.</p>
+        <button class="bigbtn" data-action="stub-back">Back to chat</button></div>`;
+    }
+    if (v === "connectors") {
+      if (!s.world.connectors.length) return `<div class="screenhead">Connectors</div>` +
+        this._emptyHtml("\uD83D\uDD0C", "No connectors in this setup", "This screen starts blank in the simulator. In the real app, this is where you connect Gmail, your calendar, and the other services your agent can use.");
+      return `<div class="screenhead">Connectors</div>` +
+        s.world.connectors.map(c =>
+          `<div class="conn"><span class="ic">${esc(c.icon)}</span><h4>${esc(c.name)}</h4>
+           ${c.state === "connected" ? `<span class="state">Connected</span>`
+             : `<button class="btn small primary" data-action="button" data-id="connect-${c.id}" data-target="connect-${c.id}">Connect</button>`}
+          </div>`).join("");
+    }
+    return this._emptyHtml("\uD83E\uDDE9", "Nothing on this screen", "The simulator leaves this view blank on purpose. The screens the lessons use are Chat, Feed, Ideas, Goals, Library, Connectors, and Activity.");
+  }
+
+  _msgHtml(m) {
+    if (m.from === "user") return `<div class="msg user${m.react ? " hasreact" : ""}">${esc(m.text)}${m.react ? `<span class="react">${m.react}</span>` : ""}</div>`;
+    if (m.from === "sys") return `<div class="msg sys">${esc(m.text)}</div>`;
+    let html = "";
+    if (m.text) html += `<div class="msg agent">${esc(m.text)}</div>`;
+    if (m.card) html += this._cardHtml(m.card);
+    return html;
+  }
+
+  _cardHtml(card) {
+    const s = this._s;
+    if (card.type === "approval") {
+      const res = s.resolved[card.id];
+      return `<div class="card" data-target="card-${card.id}"><h4>${esc(card.title)}</h4>
+        <div class="rows">${(card.rows || []).map(r => `<div class="row"><span class="k">${esc(r.k)}</span><span class="v">${esc(r.v)}</span></div>`).join("")}</div>
+        ${card.note ? `<div class="note">${esc(card.note)}</div>` : ""}
+        ${res ? `<div class="resolved ${res === "allow" ? "ok" : "no"}">${res === "allow" ? "✓ Allowed" : "Denied"}</div>`
+              : `<div class="btnrow"><button class="btn" data-action="decision" data-card="${card.id}" data-want="deny">Deny</button><button class="btn primary" data-action="decision" data-card="${card.id}" data-want="allow">Allow</button></div>`}
+      </div>`;
+    }
+    if (card.type === "action") {
+      return `<div class="card"><h4>${esc(card.title)}</h4><div class="sub">${esc(card.body || "")}</div>
+        <div class="btnrow"><button class="btn primary" data-action="button" data-id="${card.id}" data-target="btn-${card.id}">${esc(card.button)}</button></div></div>`;
+    }
+    if (card.type === "email") {
+      return `<div class="card"><h4>Draft email</h4>
+        <div class="sub">To: ${esc(card.to)}<br>Subject: ${esc(card.subject)}</div>
+        <div class="emailbody">${esc(card.body)}</div>
+        <div class="sub">Signed: ${esc(card.signoff)}</div>
+        <div class="btnrow"><button class="btn primary" data-action="button" data-id="${card.button}" data-target="btn-${card.button}">${esc(card.buttonLabel)}</button></div></div>`;
+    }
+    if (card.type === "browser") {
+      return `<div class="card" data-target="card-${card.id}"><h4>\uD83C\uDF10 ${esc(card.title)}</h4>
+        <div class="urlbar">\uD83D\uDD12 ${esc(card.url)}</div>
+        <div class="sub">${esc(card.body || "")}</div>
+        ${card.seats ? `<div class="seatgrid">${card.seats.map(se => se.taken
+          ? `<span class="seat taken">${esc(se.label)}</span>`
+          : `<button class="seat" data-action="button" data-id="seat-pick">${esc(se.label)}</button>`).join("")}</div>
+        <div class="sub">Gray seats are taken. Tap an open one.</div>` : ""}
+      </div>`;
+    }
+    if (card.type === "sent") {
+      return `<div class="card"><h4>✓ ${esc(card.title)}</h4><div class="sub">${esc(card.body)}</div>
+        <div><span class="labelchip">Label: ${esc(card.label)}</span></div></div>`;
+    }
+    if (card.type === "upcoming") {
+      return `<div class="card"><h4>🗓️ ${esc(card.title)}</h4><div class="sub">${esc(card.body)}</div></div>`;
+    }
+    if (card.type === "watchresult") {
+      return `<div class="card"><h4>🔔 ${esc(card.title)}</h4><div class="sub">${esc(card.body)}</div></div>`;
+    }
+    return "";
+  }
+
+  _composerHtml(step) {
+    const chips = (!this._explore && step && step.chips) ? step.chips : [];
+    return `<div class="composer">
+      ${chips.length ? `<div class="chips">${chips.map(c =>
+        `<button class="chip" data-action="chip" data-value="${esc(c.value)}" data-label="${esc(c.label)}">${esc(c.label)}</button>`).join("")}</div>` : ""}
+      <div class="inputrow">
+        <button class="plus" title="Add">+</button>
+        <input id="composer-input" type="text" placeholder="${this._s.listening ? "Listening... speak now" : "Message"}" autocomplete="off">
+        <button class="mic${this._s.listening ? " on" : ""}" data-action="mic" title="Voice">🎙️</button>
+        <button class="send" data-action="send" title="Send">${(this._s.typing || this._s.busy) ? "■" : "↑"}</button>
+      </div>
+    </div>`;
+  }
+
+  _sheetHtml() {
+    const s = this._s;
+    if (!s.sheet) return `<div class="sheet"></div>`;
+    if (s.sheet === "email") {
+      const card = this._findCard("draft1");
+      const body = s.shortened && card.bodyShort ? card.bodyShort : card.body;
+      return `<div class="sheet open"><div class="panel">
+        <h3>Review draft</h3>
+        <div class="meta">To: ${esc(card.to)}<br>Subject: ${esc(card.subject)}</div>
+        <div class="emailbody">${esc(body)}</div>
+        <div class="meta">Signed: ${esc(card.signoff)}<br>It will be labeled <b>SamsAgent</b> when sent.</div>
+        <div class="btnrow" style="display:flex;gap:8px;">
+          <button class="btn" data-action="button" data-id="shorten-draft" data-target="btn-shorten-draft">Make it shorter</button>
+          <button class="btn primary" data-action="button" data-id="approve-send" data-target="btn-approve-send">Approve and send</button>
+        </div>
+        <button class="btn" data-action="close-sheet">Close</button>
+      </div></div>`;
+    }
+    if (s.sheet === "activity") {
+      return `<div class="sheet open"><div class="panel">
+        <h3>Activity</h3>
+        ${s.activity.length ? s.activity.map(a => `<div class="act"><span class="when">${esc(a.when)}</span><span>${esc(a.text)}</span></div>`).join("") : `<div class="meta">Nothing yet. Actions your agent takes in this setup are logged here.</div>`}
+        <button class="btn" data-action="close-sheet">Close</button>
+      </div></div>`;
+    }
+    return `<div class="sheet"></div>`;
+  }
+
+  _findCard(id) {
+    const all = [...(this._s.sc.intro || []), ...this._s.sc.steps.flatMap(st => st.say || [])];
+    for (const m of all) if (m.card && m.card.id === id) return m.card;
+    return {};
+  }
+}
+
+if (!customElements.get("muse-simulator")) {
+  customElements.define("muse-simulator", MuseSimulator);
+}
