@@ -58,6 +58,10 @@ In `explore` mode students can wander: the sidebar opens (tabs, side chats, sett
 
 Views that are empty in a setup show an "Intentionally blank" message explaining what the real app shows there, so a quiet screen never looks broken.
 
+## Reference
+
+The build spec lives in [`spec/SPEC.md`](spec/SPEC.md): the concept, design principles, the screen by screen walkthrough, the feature support matrix, the lesson setup catalog, and the build approach. The screenshots the replica was built against are indexed in [`spec/screenshots/README.md`](spec/screenshots/README.md), including two captures from a real phone (the main chat and the sidebar, both in dark mode) alongside the official Google Play listing screenshots.
+
 ## Design notes
 
 - The replica targets the mobile UI: one phone width layout that fills a phone screen and sits as a centered column on a computer. All interactions are taps; nothing depends on hover or a keyboard.
